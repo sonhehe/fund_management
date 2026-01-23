@@ -14,13 +14,13 @@ import sqlite3
 import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import text
-from scripts.db import write_table, load_table, update_overall_snapshot, build_trade_record, run_nav_pipeline
+from scripts.db import write_table, load_table, update_overall_snapshot, build_trade_record, run_nav_pipeline, update_portfolio
 from scripts.db_engine import get_engine
 from scripts.fundshare import execute_fundshare_trade, get_latest_nav_per_unit, calculate_fundshare_fee
 from scripts.information import load_admin_information, load_investor_portfolio, load_investor_information
 from scripts.auth import authenticate_user, authenticate_admin, register_user, reset_password
 from scripts.pricing_yahoo import update_all_prices
-from scripts.update_prices import update_market_price, update_portfolio_after_trade
+from scripts.update_prices import update_market_price
 import streamlit as st
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
@@ -253,12 +253,48 @@ if page == "Update_price":
         st.success(f"✅ Updated {len(TICKERS)} stock prices")
         st.rerun()
 
+    df_port["ticker"] = df_port["ticker"].str.upper()
+
+    portfolio_map = (
+        df_port.set_index("ticker")["quantity"].to_dict()
+        if not df_port.empty else {}
+    )
     with st.form("trade_form"):
-        ticker = st.text_input("Ticker")
+        ticker = st.text_input("Ticker").upper()
         side = st.selectbox("Side", ["BUY", "SELL"])
         quantity = st.number_input("Quantity", min_value=1, step=1)
-        price = st.number_input("Price", min_value=0.0, step=0.01)
+        price = st.number_input("Price", min_value=0.0, step=100.0)
+
         submitted = st.form_submit_button("Submit trade")
+
+    # ======================
+    # VALIDATION
+    # ======================
+    error = None
+
+    if submitted:
+        # 1️⃣ SELL phải tồn tại ticker
+        if side == "SELL" and ticker not in portfolio_map:
+            error = f"❌ Cannot SELL: {ticker} not found in portfolio"
+
+        # 2️⃣ SELL không được vượt quantity
+        elif side == "SELL":
+            max_qty = portfolio_map.get(ticker, 0)
+            if quantity > max_qty:
+                error = (
+                    f"❌ Cannot SELL {quantity} units of {ticker}. "
+                    f"Available: {max_qty}"
+                )
+
+        # 3️⃣ BUY thì không cần check portfolio
+        if error:
+            st.error(error)
+        else:
+            st.success("✅ Trade validation passed")
+
+            # 👉 chỗ này m insert trade vào DB như bình thường
+            # insert_trade(ticker, side, quantity, price)
+
 
     if submitted:
         if ticker == "":
@@ -282,7 +318,11 @@ if page == "Update_price":
             st.success("✅ Trade recorded (event logged)")
             st.dataframe(df_trade_new)
 
-   
+    if st.button("Update Portfolio"):
+        engine = get_engine()
+        update_portfolio(engine)
+        st.success("Portfolio updated successfully")
+        st.rerun()
 
 # ======================
 # EXCHANGE FUND SHARE

@@ -27,41 +27,56 @@ def get_close_price(ticker: str) -> dict:
 
 
 # ===== 2. UPDATE 1 MÃ =====
+from sqlalchemy import text
+
+
 def update_one_price(engine, ticker: str, source="yfinance"):
     price = get_close_price(ticker)
-
-
     with engine.begin() as conn:
-        # upsert price_history
+        # 1️⃣ upsert price_history
         conn.execute(
             text("""
-                INSERT INTO price_history (ticker, close_price, price_date, source)
-                VALUES (:ticker, :close_price, :price_date, :source)
+                INSERT INTO price_history (
+                    ticker,
+                    close_price,
+                    price_date,
+                    source
+                )
+                VALUES (
+                    :ticker,
+                    :close_price,
+                    :price_date,
+                    :source
+                )
                 ON CONFLICT (ticker, price_date)
                 DO UPDATE SET
                     close_price = EXCLUDED.close_price,
                     source = EXCLUDED.source,
                     created_at = now();
             """),
-            {**price, "source": source}
+            {
+                "ticker": price["ticker"],
+                "close_price": price["close_price"],
+                "price_date": price["price_date"],
+                "source": source
+            }
         )
 
-
-        # update portfolio snapshot
+        # 2️⃣ update portfolio price + price_date
         conn.execute(
             text("""
                 UPDATE portfolio
-                SET market_price = :close_price
+                SET
+                    market_price = :close_price,
+                    price_date   = :price_date
                 WHERE ticker = :ticker;
             """),
             {
                 "ticker": price["ticker"],
-                "close_price": price["close_price"]
+                "close_price": price["close_price"],
+                "price_date": price["price_date"]
             }
         )
-
-
-
 
 # ===== 3. UPDATE TOÀN BỘ =====
 def update_all_prices(engine, tickers: list[str]) -> int:
