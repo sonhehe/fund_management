@@ -9,12 +9,12 @@ st.set_page_config(
 )
 import datetime as dt
 import pandas as pd
-import plotly.express as px
 import sqlite3
+from sqlalchemy import text
 import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import text
-from scripts.db import write_table, load_table, update_overall_snapshot, build_trade_record, run_nav_pipeline, update_portfolio
+from scripts.db import write_table, load_table, update_overall_snapshot, run_nav_pipeline
 from scripts.db_engine import get_engine
 from scripts.fundshare import execute_fundshare_trade, get_latest_nav_per_unit, calculate_fundshare_fee
 from scripts.information import load_admin_information, load_investor_portfolio, load_investor_information
@@ -26,7 +26,7 @@ from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
 from scripts.ui.allocation_pie import render_asset_allocation
 from scripts.ui.relative_performance import render_relative_performance
-
+from scripts.portfolio import insert_empty_portfolio_row, build_trade_record, update_portfolio
 # ======================
 # AUTHENTICATION
 # ======================
@@ -237,11 +237,18 @@ if page == "Update_price":
         use_container_width=True,
         hide_index=True
     )
-    TICKERS = [
-    "ACB", "BCM", "BID", "CTG", "DGC",
-    "FPT", "GAS", "GVR", "HDB", "MSN",
-    "VHM", "VIC", "VNM"
-]
+    df_port["ticker"] = df_port["ticker"].str.upper()
+
+# 👉 LẤY TICKER TỪ PORTFOLIO
+    TICKERS = (
+        df_port.loc[
+            (df_port["asset_type"] == "Stock") & 
+            (df_port["ticker"].notna()),
+            "ticker"
+        ]
+        .unique()
+        .tolist()
+    )
 
 
     engine = get_engine()
@@ -268,13 +275,15 @@ if page == "Update_price":
         submitted = st.form_submit_button("Submit trade")
 
     # ======================
-    # VALIDATION
-    # ======================
-    error = None
-
     if submitted:
+        error = None
+
+        # 0️⃣ empty ticker
+        if ticker == "":
+            error = "Ticker cannot be empty"
+
         # 1️⃣ SELL phải tồn tại ticker
-        if side == "SELL" and ticker not in portfolio_map:
+        elif side == "SELL" and ticker not in portfolio_map:
             error = f"❌ Cannot SELL: {ticker} not found in portfolio"
 
         # 2️⃣ SELL không được vượt quantity
@@ -286,21 +295,16 @@ if page == "Update_price":
                     f"Available: {max_qty}"
                 )
 
-        # 3️⃣ BUY thì không cần check portfolio
+        # 3️⃣ BUY: auto-add ticker nếu chưa có
+        elif side == "BUY" and ticker not in portfolio_map:
+            insert_empty_portfolio_row(engine, ticker, price)
+            st.info(f"➕ Added new ticker {ticker} to portfolio")
+
         if error:
             st.error(error)
+
         else:
-            st.success("✅ Trade validation passed")
-
-            # 👉 chỗ này m insert trade vào DB như bình thường
-            # insert_trade(ticker, side, quantity, price)
-
-
-    if submitted:
-        if ticker == "":
-            st.error("Ticker cannot be empty")
-        else:
-            trade_time = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            trade_time = dt.datetime.now()
 
             trade = build_trade_record(
                 trade_date=trade_time,
@@ -309,14 +313,37 @@ if page == "Update_price":
                 quantity=quantity,
                 price=price,
             )
-            
+
             df_trade_new = pd.DataFrame([trade])
 
-            # 🔒 CHỈ GHI EVENT – KHÔNG UPDATE PORTFOLIO/NAV
-            write_table(df_trade_new, "trades")
+            with engine.begin() as conn:
+                # 1️⃣ insert trade
+                conn.execute(
+                    text("""
+                        INSERT INTO trades
+                        (trade_date, ticker, side, quantity, price, cash_flow)
+                        VALUES
+                        (:trade_date, :ticker, :side, :quantity, :price, :cash_flow)
+                    """),
+                    trade
+                )
 
-            st.success("✅ Trade recorded (event logged)")
+                # 2️⃣ apply cash flow
+                conn.execute(
+                    text("""
+                        UPDATE portfolio
+                        SET net_value = net_value + :cash_flow
+                        WHERE asset_type = 'Cash'
+                        OR ticker = 'YTM'
+                    """),
+                    {"cash_flow": trade["cash_flow"]}
+                )
+
+            st.success("✅ Trade executed successfully")
             st.dataframe(df_trade_new)
+
+            # 🔁 rerun CHỈ SAU KHI INSERT XONG
+            st.rerun()
 
     if st.button("Update Portfolio"):
         engine = get_engine()

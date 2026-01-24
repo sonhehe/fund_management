@@ -192,93 +192,6 @@ def update_overall_snapshot():
         conn.execute(text(sql))
 
 
-def build_trade_record(ticker, side, quantity, price, trade_date):
-    side = side.capitalize()
-
-    if side == "Buy":
-        cash_flow = -quantity * price
-    elif side == "Sell":
-        cash_flow = quantity * price
-    else:
-        raise ValueError("Side must be Buy or Sell")
-
-    return {
-        "trade_date": trade_date,
-        "side": side,
-        "ticker": ticker,
-        "quantity": quantity,
-        "price": price,
-        "cash_flow": cash_flow
-    }
-
-def update_portfolio(engine):
-    """
-    Update portfolio using ONLY trades AFTER latest portfolio price_date
-    """
-
-    sql = """
-    WITH last_port_date AS (
-        SELECT MAX(price_date) AS last_date
-        FROM portfolio
-    ),
-
-    trade_agg AS (
-        SELECT
-            t.ticker,
-
-            SUM(CASE WHEN t.side = 'Buy'  THEN t.quantity ELSE 0 END) AS buy_qty,
-            SUM(CASE WHEN t.side = 'Sell' THEN t.quantity ELSE 0 END) AS sell_qty,
-
-            SUM(CASE
-                WHEN t.side = 'Buy' THEN t.quantity * t.price
-                ELSE 0
-            END) AS buy_value
-
-        FROM trades t
-        CROSS JOIN last_port_date d
-        WHERE t.trade_date >= d.last_date
-        GROUP BY t.ticker
-    ),
-
-    updated AS (
-        SELECT
-            p.ticker,
-
-            -- quantity mới
-            (p.quantity + ta.buy_qty - ta.sell_qty) AS quantity_new,
-
-            -- buy_price mới (WAC)
-            CASE
-                WHEN ta.buy_qty > 0 THEN
-                    (p.buy_price * p.quantity + ta.buy_value)
-                    / (p.quantity + ta.buy_qty)
-                ELSE p.buy_price
-            END AS buy_price_new,
-
-            p.market_price
-
-        FROM portfolio p
-        JOIN trade_agg ta
-            ON p.ticker = ta.ticker
-    )
-
-    UPDATE portfolio p
-    SET
-        quantity   = u.quantity_new,
-        buy_price  = u.buy_price_new,
-        net_value  = u.quantity_new * u.market_price,
-        interest   = CASE
-                        WHEN u.buy_price_new > 0 THEN
-                            (u.market_price - u.buy_price_new) / u.buy_price_new
-                        ELSE 0
-                     END
-    FROM updated u
-    WHERE p.ticker = u.ticker;
-    """
-
-    with engine.begin() as conn:
-        conn.execute(text(sql))
-
 def update_costs(engine):
     with engine.begin() as conn:
         conn.execute(text("""
@@ -287,12 +200,11 @@ def update_costs(engine):
         conn.execute(
             text("""
                 INSERT INTO costs (
-                    cost_date, cost_type, cost, cost_per_day, cost_category, rate
+                    cost_date, cost_type, cost, cost_category, rate
                 )
                 SELECT
                     n.nav_date,
                     'management_fee',
-                    n.nav_total * 0.0015 / 365,
                     n.nav_total * 0.0015 / 365,
                     'Management',
                     0.0015
