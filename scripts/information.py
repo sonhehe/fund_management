@@ -138,21 +138,28 @@ def load_investor_portfolio(customer_id: str):
             return None
 
 
-        # 2️⃣ NAV hiện tại
-        nav = conn.execute(
+        # 2️⃣ Giá CCQ hiện tại (nav_per_unit)
+        nav_per_unit = conn.execute(
             text("""
-                SELECT interest
-                FROM overall_snapshot
-                WHERE attribute = 'Fund share'
-                ORDER BY snapshot_time DESC
+                SELECT nav_per_unit
+                FROM nav
+                ORDER BY nav_date DESC
                 LIMIT 1
             """)
-        ).scalar() or 0
+        ).scalar()
+
+        if nav_per_unit is None:
+            nav_per_unit = 0
 
 
-        market_value = investor["nos"] * nav
+        market_value = investor["nos"] * nav_per_unit
+        total_assets = market_value
         pnl = market_value - investor["capital"]
-        roi = (pnl / investor["capital"] * 100) if investor["capital"] > 0 else 0
+        roi = (
+            pnl / investor["capital"] * 100
+            if investor["capital"] and investor["capital"] > 0
+            else 0
+        )
 
 
         # 3️⃣ Lịch sử giao dịch CCQ
@@ -179,12 +186,14 @@ def load_investor_portfolio(customer_id: str):
         "customer_name": investor["customer_name"],
         "nos": investor["nos"],
         "capital": investor["capital"],
-        "nav": nav,
+        "nav_per_unit": nav_per_unit,
         "market_value": market_value,
+        "total_assets": total_assets,
         "pnl": pnl,
         "roi": roi,
         "trades": trades,
     }
+
 
 
 

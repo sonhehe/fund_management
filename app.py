@@ -508,6 +508,7 @@ from scripts.information import (
 )
 
 
+
 if page == "Information":
     role = st.session_state.role
 
@@ -589,12 +590,13 @@ if page == "Information":
     col2.metric("Giá trị thị trường", f"{float(data['market_value']):,.2f}")
     col3.metric("Lãi / Lỗ", f"{float(data['pnl']):,.2f}")
 
-
+    st.metric("💰 Vốn đầu tư", f"{float(data['capital']):,.2f}")
     st.metric("📈 ROI (%)", f"{float(data['roi']):,.2f}")
 
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
     st.dataframe(data["trades"])
+
 
 
 # ======================
