@@ -6,6 +6,10 @@ from scripts.db_engine import get_engine
 
 
 
+
+
+
+
 # ==============
 # OVERALL INFO
 # ==============
@@ -14,6 +18,8 @@ from scripts.db_engine import get_engine
         # ======
 def load_admin_information():
     engine = get_engine()
+
+
 
 
     with engine.connect() as conn:
@@ -25,6 +31,8 @@ def load_admin_information():
                 WHERE asset_type = 'Cash'
             """)
         ).scalar()
+
+
 
 
         # 2️⃣ Fund share tổng
@@ -41,6 +49,8 @@ def load_admin_information():
         )
 
 
+
+
         # 3️⃣ Interest toàn quỹ
         interest = conn.execute(
             text("""
@@ -53,6 +63,8 @@ def load_admin_information():
         ).scalar()
 
 
+
+
         # 4️⃣ Danh sách nhà đầu tư
         investors = pd.read_sql(
             """
@@ -61,12 +73,15 @@ def load_admin_information():
                 customer_name,
                 nos,
                 capital,
+                current_cash,
                 status
             FROM investors
             ORDER BY customer_id
             """,
             conn
         )
+
+
 
 
     return {
@@ -79,13 +94,19 @@ def load_admin_information():
     }
 
 
+
+
         # ========
         # INVESTOR
         # ========
 
 
+
+
 def load_investor_information(customer_id: str):
     engine = get_engine()
+
+
 
 
     with engine.connect() as conn:
@@ -107,8 +128,12 @@ def load_investor_information(customer_id: str):
         ).mappings().fetchone()
 
 
+
+
     if row is None:
         return None
+
+
 
 
     return dict(row)
@@ -119,6 +144,8 @@ def load_investor_portfolio(customer_id: str):
     engine = get_engine()
 
 
+
+
     with engine.connect() as conn:
         # 1️⃣ Thông tin tổng hợp
         investor = conn.execute(
@@ -126,7 +153,8 @@ def load_investor_portfolio(customer_id: str):
                 SELECT
                     customer_name,
                     nos,
-                    capital
+                    capital,
+                    current_cash
                 FROM investors
                 WHERE customer_id = :cid
             """),
@@ -134,8 +162,12 @@ def load_investor_portfolio(customer_id: str):
         ).mappings().fetchone()
 
 
+
+
         if investor is None:
             return None
+
+
 
 
         # 2️⃣ Giá CCQ hiện tại (nav_per_unit)
@@ -148,18 +180,25 @@ def load_investor_portfolio(customer_id: str):
             """)
         ).scalar()
 
+
         if nav_per_unit is None:
             nav_per_unit = 0
 
 
-        market_value = investor["nos"] * nav_per_unit
-        total_assets = market_value
-        pnl = market_value - investor["capital"]
-        roi = (
-            pnl / investor["capital"] * 100
-            if investor["capital"] and investor["capital"] > 0
-            else 0
-        )
+
+
+        nos = float(investor["nos"] or 0)
+        capital = float(investor["capital"] or 0)
+        current_cash = float(investor.get("current_cash", 0) or 0)
+        nav_per_unit = float(nav_per_unit or 0)
+
+        market_value = nos * nav_per_unit
+        total_assets = market_value + current_cash
+        pnl = market_value - capital
+
+        roi = (pnl / capital * 100) if capital > 0 else 0
+
+
 
 
         # 3️⃣ Lịch sử giao dịch CCQ
@@ -182,17 +221,27 @@ def load_investor_portfolio(customer_id: str):
         )
 
 
+
+
     return {
         "customer_name": investor["customer_name"],
         "nos": investor["nos"],
         "capital": investor["capital"],
         "nav_per_unit": nav_per_unit,
         "market_value": market_value,
+        "current_cash": current_cash,
         "total_assets": total_assets,
         "pnl": pnl,
         "roi": roi,
         "trades": trades,
     }
+
+
+
+
+
+
+
 
 
 

@@ -39,8 +39,12 @@ def get_fundshare_fee_rate(side=None) -> float:
     engine = get_engine()
 
 
+
+
     # tạm thời dùng chung 1 loại phí
     cost_type = "transaction_fee"
+
+
 
 
     with engine.connect() as conn:
@@ -56,11 +60,19 @@ def get_fundshare_fee_rate(side=None) -> float:
         ).scalar()
 
 
+
+
     if rate is None:
         raise ValueError("Fee rate not found")
 
 
+
+
     return float(rate)
+
+
+
+
 
 
 
@@ -71,6 +83,10 @@ def get_fundshare_fee_rate(side=None) -> float:
 def calculate_fundshare_fee(side: str, amount: float) -> float:
     rate = get_fundshare_fee_rate(side)
     return amount * rate
+
+
+
+
 
 
 
@@ -89,12 +105,18 @@ def execute_fundshare_trade(
         raise ValueError("side must be BUY or SELL")
 
 
+
+
     engine = get_engine()
     nav = get_latest_nav_per_unit()
     fee_rate = get_fundshare_fee_rate(side)
 
 
+
+
     with engine.begin() as conn:
+
+
 
 
         # ======================
@@ -102,7 +124,7 @@ def execute_fundshare_trade(
         # ======================
         investor = conn.execute(
             text("""
-                SELECT nos, capital
+                SELECT nos, capital, current_cash
                 FROM investors
                 WHERE customer_id = :cid
                 FOR UPDATE
@@ -111,12 +133,20 @@ def execute_fundshare_trade(
         ).mappings().fetchone()
 
 
+
+
         if investor is None:
             raise ValueError("Investor not found")
 
 
+
+
         current_nos = float(investor["nos"])
         current_capital = float(investor["capital"])
+        if side == "BUY" and float(investor["current_cash"]) < amount:
+          raise ValueError("Không đủ tiền")
+
+
 
 
         # ======================
@@ -132,11 +162,17 @@ def execute_fundshare_trade(
         ).fetchone()
 
 
+
+
         if cash_row is None:
             raise ValueError("Cash (YTM) not found in portfolio")
 
 
+
+
         fund_cash = float(cash_row[0])
+
+
 
 
         # ======================
@@ -147,17 +183,24 @@ def execute_fundshare_trade(
                 raise ValueError("Amount must be provided for BUY")
 
 
+
+
             fee = amount * fee_rate
             net_amount = amount - fee
             units = net_amount / nav
 
 
+
+
             new_nos = current_nos + units
             new_capital = current_capital + net_amount
+   
 
 
             # quỹ nhận tiền
             cash_change = net_amount
+
+
 
 
         # ======================
@@ -168,8 +211,12 @@ def execute_fundshare_trade(
                 raise ValueError("Quantity must be provided for SELL")
 
 
+
+
             if quantity > current_nos:
                 raise ValueError("Not enough fund shares to sell")
+
+
 
 
             gross_amount = quantity * nav
@@ -177,17 +224,25 @@ def execute_fundshare_trade(
             net_amount = gross_amount - fee
 
 
+
+
             if fund_cash < net_amount:
                 raise ValueError("Fund does not have enough cash")
+
+
 
 
             new_nos = current_nos - quantity
             new_capital = current_capital - gross_amount
 
 
+
+
             # quỹ trả tiền
             cash_change = -net_amount
             units = quantity
+
+
 
 
         # ======================
@@ -231,15 +286,19 @@ def execute_fundshare_trade(
             text("""
                 UPDATE investors
                 SET nos = :nos,
-                    capital = :cap
+                    capital = :cap,
+                    current_cash = current_cash + :cash_delta
                 WHERE customer_id = :cid
             """),
             {
                 "nos": new_nos,
                 "cap": new_capital,
+                "cash_delta": -amount if side == "BUY" else net_amount,
                 "cid": customer_id
             }
         )
+
+
 
 
         # ======================

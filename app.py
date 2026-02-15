@@ -458,9 +458,13 @@ if page == "Cash":
 elif page == "Exchange_FundShare":
 
 
+
+
     st.header("🔄 Exchange Fund Share")
     engine = get_engine()
     is_admin = st.session_state.get("is_admin", False)
+
+
 
 
     # ======================
@@ -470,7 +474,11 @@ elif page == "Exchange_FundShare":
         side = st.selectbox("Side", ["Buy", "Sell"])
 
 
+
+
         nav_price = get_latest_nav_per_unit()
+
+
 
 
         if side == "Buy":
@@ -480,23 +488,30 @@ elif page == "Exchange_FundShare":
             )
 
 
+
+
             fee = calculate_fundshare_fee("Buy", amount)
             net_amount = amount - fee
             units = net_amount / nav_price
 
 
-            st.info(f"💰 NAV/CCQ: {nav_price:,.2f}")
-            st.info(f"💵 Tiền nhà đầu tư chuyển: {amount:,.0f}")
+
+
+            st.info(f"💰 Giá CCQ: {nav_price:,.2f}")
             st.info(f"💸 Phí giao dịch: {fee:,.0f}")
             st.info(f"📥 Góp vốn thực tế: {net_amount:,.0f}")
             st.info(f"📦 CCQ nhận được: {units:,.4f}")
 
 
+
+
         else:  # SELL
             quantity = st.number_input(
                 "Units to Sell",
-                min_value=1.0
+                min_value=0.0001
             )
+
+
 
 
             gross_amount = quantity * nav_price
@@ -504,13 +519,17 @@ elif page == "Exchange_FundShare":
             net_amount = gross_amount - fee
 
 
-            st.info(f"💰 NAV/CCQ: {nav_price:,.2f}")
+
+
+            st.info(f"💰 Giá CCQ: {nav_price:,.2f}")
             st.info(f"📤 Giá trị bán: {gross_amount:,.0f}")
             st.info(f"💸 Phí giao dịch: {fee:,.0f}")
             st.info(f"💵 Tiền nhận: {net_amount:,.0f}")
 
 
-        # ✅ NÚT GỬI REQUEST (CHỈ INVESTOR MỚI CÓ)
+
+
+        # ✅ NÚT GỬI REQUEST CCQ
         if st.button("📨 Gửi yêu cầu"):
             df = pd.DataFrame([{
                 "customer_id": st.session_state.customer_id,
@@ -523,22 +542,56 @@ elif page == "Exchange_FundShare":
             }])
 
 
+
+
             write_table(df, "fundshare_requests")
             st.success("✅ Đã gửi yêu cầu cho Admin duyệt")
             st.rerun()
 
 
+    # ✅ NÚT GỬI REQUEST TIỀN
+        st.divider()
+        st.subheader("💸 Nạp / Rút tiền")
+
+
+        action = st.selectbox("Chọn", ["Deposit", "Withdraw"])
+        amount = st.number_input("Số tiền", min_value=0.0)
+
+
+        if st.button("📨 Gửi yêu cầu tiền"):
+            df = pd.DataFrame([{
+                "customer_id": st.session_state.customer_id,
+                "type": action.upper(),
+                "amount": amount,
+                "status": "PENDING"
+            }])
+
+
+            write_table(df, "cash_requests")
+            st.success("✅ Đã gửi yêu cầu")
+            st.rerun()
+
+
+
+
     # ======================
     # ADMIN
     # ======================
+
+
+    # ===== Duyệt CCQ =====
     else:
         st.subheader("📑 Pending Requests")
+
+
 
 
         df_req = pd.read_sql(
             "SELECT * FROM fundshare_requests WHERE status='PENDING'",
             engine
         )
+
+
 
 
         if df_req.empty:
@@ -549,7 +602,11 @@ elif page == "Exchange_FundShare":
                     st.write(r)
 
 
+
+
                     col1, col2 = st.columns(2)
+
+
 
 
                     # ===== APPROVE =====
@@ -567,6 +624,8 @@ elif page == "Exchange_FundShare":
                                 st.stop()
 
 
+
+
                             with engine.begin() as conn:
                                 conn.execute(
                                     text("""
@@ -578,8 +637,12 @@ elif page == "Exchange_FundShare":
                                 )
 
 
+
+
                             st.success("✅ Approved")
                             st.rerun()
+
+
 
 
                     # ===== REJECT =====
@@ -596,8 +659,83 @@ elif page == "Exchange_FundShare":
                                 )
 
 
+
+
                             st.warning("❌ Request rejected")
                             st.rerun()
+ # ===== Duyệt tiền =====
+
+
+        st.divider()
+        st.subheader("💰 Cash Requests")
+
+
+        engine = get_engine()
+
+
+        df_req = pd.read_sql(
+            "SELECT * FROM cash_requests WHERE status='PENDING'",
+            engine
+        )
+
+
+        for idx, r in df_req.iterrows():
+            with st.expander(f"{r['customer_id']} – {r['type']} – {r['amount']:,.0f}"):
+
+
+                col1, col2 = st.columns(2)
+
+
+                # ===== APPROVE =====
+                with col1:
+                    if st.button("✅ Approve", key=f"cash_app_{r['id']}"):
+
+
+                        if r["type"] == "DEPOSIT":
+                            query = """
+                            UPDATE investors
+                            SET current_cash = current_cash + :amount
+                            WHERE customer_id = :cid
+                            """
+                        else:
+                            query = """
+                            UPDATE investors
+                            SET current_cash = current_cash - :amount
+                            WHERE customer_id = :cid
+                            """
+
+
+                        with engine.begin() as conn:
+                            conn.execute(text(query), {
+                                "amount": r["amount"],
+                                "cid": r["customer_id"]
+                            })
+
+
+                            conn.execute(text("""
+                                UPDATE cash_requests
+                                SET status='SUCCESS'
+                                WHERE id=:id
+                            """), {"id": r["id"]})
+
+
+                        st.success("Approved")
+                        st.rerun()
+
+
+                # ===== REJECT =====
+                with col2:
+                    if st.button("❌ Reject", key=f"cash_rej_{r['id']}"):
+                        with engine.begin() as conn:
+                            conn.execute(text("""
+                                UPDATE cash_requests
+                                SET status='REJECTED'
+                                WHERE id=:id
+                            """), {"id": r["id"]})
+
+
+                        st.warning("Rejected")
+                        st.rerun()
 
 
 # ======================
@@ -610,8 +748,11 @@ from scripts.information import (
 
 
 
+
 if page == "Information":
     role = st.session_state.role
+
+
 
 
     # ======================
@@ -621,10 +762,16 @@ if page == "Information":
         st.header("🧾 Fund Information (Admin)")
 
 
+
+
         info = load_admin_information()
 
 
+
+
         col1, col2, col3 = st.columns(3)
+
+
 
 
         col1.metric("💰 Cash Balance", f"{info['cash']:,.0f}")
@@ -632,7 +779,11 @@ if page == "Information":
         col3.metric("📈 Fund Return", f"{info['interest']*100:.2f}%")
 
 
+
+
         st.divider()
+
+
 
 
         st.subheader("📊 Fund Value")
@@ -643,11 +794,17 @@ if page == "Information":
         }]), use_container_width=True)
 
 
+
+
         st.divider()
+
+
 
 
         st.subheader("👥 Investors List")
         st.dataframe(info["investors"], use_container_width=True)
+
+
 
 
     # ======================
@@ -657,15 +814,20 @@ if page == "Information":
         st.header("👤 My Information")
 
 
+
+
     customer_id = st.session_state.customer_id
     info = load_investor_information(customer_id)
+
+
 
 
     if info is None:
         st.warning("Trống")
         st.stop()
 
-#thong tin ca nhan
+
+    #thong tin ca nhan
     col1, col2 = st.columns(2)
     col1.write(f"**Customer ID:** {info['customer_id']}")
     col1.write(f"**Họ tên:** {info['customer_name']}")
@@ -673,26 +835,29 @@ if page == "Information":
     col1.write(f"**Trạng thái:** {info['status']}")
 
 
+
+
     col2.write(f"**Email:** {info['email']}")
     col2.write(f"**SĐT:** {info['phone']}")
     col2.write(f"**Địa chỉ:** {info['address']}")
     col2.write(f"**STK ngân hàng:** {info['bank_account']}")
     st.divider()
-#lich su giao dich
+    #lich su giao dich
     data = load_investor_portfolio(st.session_state.customer_id)
     st.header("📦 My Portfolio")
     st.write(f"👤 {data['customer_name']}")
-    col1, col2, col3 = st.columns(3)
-    col1.metric(
-    "CCQ nắm giữ",
-    f"{float(data['nos']):,.2f}"
-)
 
-    col2.metric("Giá trị thị trường", f"{float(data['market_value']):,.2f}")
-    col3.metric("Lãi / Lỗ", f"{float(data['pnl']):,.2f}")
 
-    st.metric("💰 Vốn đầu tư", f"{float(data['capital']):,.2f}")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("CCQ nắm giữ", f"{float(data['nos']):,.2f}")
+    col2.metric("Tiền vốn", f"{data['capital']:,.0f}")
+    col3.metric("Giá trị thị trường", f"{float(data['market_value']):,.2f}")
+    col4.metric("Lãi / Lỗ", f"{float(data['pnl']):,.2f}")
+    col5.metric("Số tiền khả dụng", f"{data['current_cash']:,.0f}")
+
+
     st.metric("📈 ROI (%)", f"{float(data['roi']):,.2f}")
+    st.metric("💰 Tổng tài sản", f"{data['total_assets']:,.0f}")
 
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
@@ -700,12 +865,15 @@ if page == "Information":
 
 
 
+
 # ======================
 # MY PORTFOLIO
 # ======================
 from scripts.information import load_investor_portfolio
-    
+   
   # ===== INVESTOR / ORGANISE =====
+
+
 
 
 if page == "Overall_investor":
@@ -725,15 +893,19 @@ if page == "Overall_investor":
     fig = render_nav_chart(df_nav)
 
 
+
+
     st.plotly_chart(
         fig,
         use_container_width=True,
         config={"displayModeBar": False}
     )
 
-    # ---------- CHARTS ----------
-    
+
+# ---------- CHARTS ----------
+
     render_asset_allocation(df)
     st.subheader("📈 Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
     st.plotly_chart(fig_perf, use_container_width=True, use_container_height=1500)
+
