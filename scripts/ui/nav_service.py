@@ -23,3 +23,22 @@ def get_nav_df():
         )
 
     return df
+def cash_df():
+    """
+    Dùng cho UI: cash chart
+    """
+    engine = get_engine()
+
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            """
+            SELECT
+                created_at,
+                cash_end
+            FROM cash
+            ORDER BY created_at
+            """,
+            conn
+        )
+
+    return df

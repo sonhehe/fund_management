@@ -17,6 +17,7 @@ ALLOWED_TABLES = {
     "investors",
     "users",
     "costs",
+    "cash",
     "fundshare_requests",
     "trade_confirmations",
 }
