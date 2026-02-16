@@ -183,6 +183,7 @@ if page == "Overall":
     st.subheader("📋 Overall")
     smart_dataframe(
         df,
+        "overall_snapshot",
         use_container_width=True,
         hide_index=True
     )
@@ -193,12 +194,14 @@ if page == "Overall":
     st.subheader("📋 Costs")
     smart_dataframe(
         df_costs,
+        "costs",
         use_container_width=True,
         hide_index=True
     )
     st.subheader("📈NAV")
     smart_dataframe(
         df_nav,
+        "nav",
         use_container_width=True,
         hide_index=True
     )
@@ -235,6 +238,7 @@ if page == "Update_price":
     df_port = load_table("portfolio")
     smart_dataframe(
         df_port,
+        "portfolio",
         use_container_width=True,
         hide_index=True
     )
@@ -341,7 +345,7 @@ if page == "Update_price":
                 )
 
             st.success("✅ Trade executed successfully")
-            smart_dataframe(df_trade_new)
+            st.dataframe(df_trade_new)
 
             # 🔁 rerun CHỈ SAU KHI INSERT XONG
             st.rerun()
@@ -431,6 +435,7 @@ if page == "Cash":
     st.subheader("📋 Trade Store")
     smart_dataframe(
         df_tradestore_display,
+        "trades",
         use_container_width=True,
         hide_index=True
     )
@@ -448,6 +453,7 @@ if page == "Cash":
     st.subheader("📋 Fund Share Trades")
     smart_dataframe(
         df_exchange_display,
+        "fundshare_trades",
         use_container_width=True,
         hide_index=True
     )
@@ -787,7 +793,7 @@ if page == "Information":
 
 
         st.subheader("📊 Fund Value")
-        smart_dataframe(pd.DataFrame([{
+        st.dataframe(pd.DataFrame([{
             "Invested Value": info["invested_value"],
             "Market Value": info["market_value"],
             "Profit": info["market_value"] - info["invested_value"]
@@ -802,7 +808,7 @@ if page == "Information":
 
 
         st.subheader("👥 Investors List")
-        smart_dataframe(info["investors"], use_container_width=True)
+        smart_dataframe(info["investors"], "investors", use_container_width=True)
 
 
 
@@ -823,7 +829,6 @@ if page == "Information":
 
 
     if info is None:
-        st.warning("Trống")
         st.stop()
 
 
@@ -848,9 +853,10 @@ if page == "Information":
     st.write(f"👤 {data['customer_name']}")
 
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2 = st.columns(2)
     col1.metric("CCQ nắm giữ", f"{float(data['nos']):,.2f}")
     col2.metric("Tiền vốn", f"{data['capital']:,.0f}")
+    col3, col4, col5 = st.columns(3)
     col3.metric("Giá trị thị trường", f"{float(data['market_value']):,.2f}")
     col4.metric("Lãi / Lỗ", f"{float(data['pnl']):,.2f}")
     col5.metric("Số tiền khả dụng", f"{data['current_cash']:,.0f}")
@@ -861,7 +867,7 @@ if page == "Information":
 
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
-    smart_dataframe(data["trades"])
+    smart_dataframe(data["trades"], "fundshare_trades", use_container_width=True, hide_index=True)
 
 
 
@@ -886,6 +892,7 @@ if page == "Overall_investor":
     st.subheader("📋 Portfolio Summary")
     smart_dataframe(
         df,
+        "overall_snapshot",
         use_container_width=True,
         hide_index=True
     )

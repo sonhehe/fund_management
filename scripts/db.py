@@ -5,7 +5,6 @@ from sqlalchemy import text
 from datetime import date
 from scripts.db_engine import get_engine
 from scripts.pricing_yahoo import get_close_price
-
 # SECURITY: ALLOWED TABLES
 # ======================
 ALLOWED_TABLES = {
@@ -25,6 +24,104 @@ ALLOWED_TABLES = {
 
 
 # ======================
+TABLE_COLUMN_LABELS = {
+    "overall_snapshot": {
+        "attribute": "Attribute",
+        "initial_investment": "Initial Investment",
+        "market_value": "Market Value",
+        "weight": "Current Weight",
+        "weight_obj": "Target Weight",
+        "profit": "Profit",
+        "interest": "Return (%)",
+        "snapshot_time": "Snapshot Time",
+    },
+
+    "nav": {
+        "nav_date": "NAV Date",
+        "nav_total": "NAV Total",
+        "current_units": "Current Units",
+        "nav_per_unit": "NAV / Unit",
+    },
+
+    "trades": {
+        "trade_id": "Trade ID",
+        "trade_date": "Trade Date",
+        "cash_flow": "Cash Flow",
+        "price": "Price",
+        "side": "Side",
+        "quantity": "Quantity",
+        "ticket": "Ticker",
+    },
+    "costs": {
+        "cost_date": "Date",
+        "cost_type": "Type",
+        "cost": "Cost",
+        "cost_category": "Category",
+        "rate": "Rate",
+    },
+    "portfolio": {
+        "price_date": "Price Date",
+        "ticker": "Ticker",
+        "asset_name": "Name",
+        "asset_type": "Asset Type",
+        "quantity": "Quantity",
+        "buy_price": "Buy Price",
+        "market_price": "Market Price",
+        "net_value": "Net Value",
+        "interest": "Interest",
+        "current_weight": "Current Weight",
+        "target_weight": "Target Weight",
+    },
+    "users": {
+        "username": "Username",
+        "display_name": "Display Name",
+        "email": "Email",
+        "cccd_mst": "CCCD/MST",
+        "dob": "DoB",
+        "phone": "Phone",
+        "address": "Address",
+        "bank_account": "Bank Account",
+        "pwd_hash": "Password Hash",
+        "role": "Role",
+        "fund": "Fund",
+        "created_at": "Created At",
+        "customer_id": "Customer ID",
+    },
+    "investors": {
+        "customer_id": "Customer ID",
+        "customer_name": "Customer Name",
+        "status": "Status",
+        "open_account_date": "Open Account Date",
+        "indentity_number": "Identity Number",
+        "dob": "DoB",
+        "phone": "Phone",
+        "email": "Email",
+        "address": "Address",
+        "capital": "Capital",
+        "nos": "Nos",
+        "current_cash": "Current Cash",
+        "interest_rate": "Interest Rate",
+        "bank_account": "Bank Account",
+    },
+    "fundshare_trades": {
+        "trade_date": "Trade Date",
+        "customer_id": "Customer ID",
+        "side": "Side",
+        "quantity": "Quantity",
+        "price": "Price",
+        "cost": "Cost",
+        "capital": "Capital",
+        "current_fs": "Current Fund Shares",
+        "cash_flow": "Cash Flow",
+    },
+}
+def apply_column_labels(df, table_name):
+    labels = TABLE_COLUMN_LABELS.get(table_name, {})
+    return df.rename(columns={
+        col: labels.get(col, col)
+        for col in df.columns
+    })
+
 # READ
 # ======================
 def load_table(table_name: str) -> pd.DataFrame:
@@ -50,8 +147,8 @@ def load_table(table_name: str) -> pd.DataFrame:
 
 # ======================
 from decimal import Decimal
-def smart_dataframe(df, use_container_width=True, hide_index=True):
-    df_display = df.copy()
+def smart_dataframe(df, table_name, use_container_width=True, hide_index=True):
+    df_display = apply_column_labels(df, table_name)
 
     # Chỉ làm tròn numeric
     numeric_cols = df_display.select_dtypes(include="number").columns
