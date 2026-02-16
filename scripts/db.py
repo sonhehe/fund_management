@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import streamlit as st
 from sqlalchemy import text
 from datetime import date
 from scripts.db_engine import get_engine
@@ -34,11 +35,34 @@ def load_table(table_name: str) -> pd.DataFrame:
 
     # ⚠️ Postgres phân biệt hoa/thường khi có "
     query = text(f'SELECT * FROM "{table_name}"')
+    df = pd.read_sql(query, engine)
 
-    return pd.read_sql(query, engine)
+    # 🔥 Convert toàn bộ Decimal -> float
+    for col in df.columns:
+        if df[col].dtype == "object":
+            try:
+                df[col] = df[col].astype(float)
+            except:
+                pass
+
+    return df
 
 
 # ======================
+from decimal import Decimal
+def smart_dataframe(df, use_container_width=True, hide_index=True):
+    df_display = df.copy()
+
+    # Chỉ làm tròn numeric
+    numeric_cols = df_display.select_dtypes(include="number").columns
+    df_display[numeric_cols] = df_display[numeric_cols].round(2)
+    
+    st.dataframe(
+        df_display,
+        use_container_width=use_container_width,
+        hide_index=hide_index
+    )
+
 # WRITE (APPEND ONLY)
 # ======================
 def write_table(

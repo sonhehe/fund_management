@@ -14,7 +14,7 @@ from sqlalchemy import text
 import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import text
-from scripts.db import write_table, load_table, update_overall_snapshot, run_nav_pipeline
+from scripts.db import write_table, load_table, update_overall_snapshot, run_nav_pipeline, smart_dataframe
 from scripts.db_engine import get_engine
 from scripts.fundshare import execute_fundshare_trade, get_latest_nav_per_unit, calculate_fundshare_fee
 from scripts.information import load_admin_information, load_investor_portfolio, load_investor_information
@@ -181,7 +181,7 @@ if page == "Overall":
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
     st.subheader("📋 Overall")
-    st.dataframe(
+    smart_dataframe(
         df,
         use_container_width=True,
         hide_index=True
@@ -191,13 +191,13 @@ if page == "Overall":
             st.success("✅ Overall snapshot updated successfully")
             st.rerun()
     st.subheader("📋 Costs")
-    st.dataframe(
+    smart_dataframe(
         df_costs,
         use_container_width=True,
         hide_index=True
     )
     st.subheader("📈NAV")
-    st.dataframe(
+    smart_dataframe(
         df_nav,
         use_container_width=True,
         hide_index=True
@@ -233,7 +233,7 @@ if page == "Overall":
 if page == "Update_price":
     st.header("💹 Portfolio")
     df_port = load_table("portfolio")
-    st.dataframe(
+    smart_dataframe(
         df_port,
         use_container_width=True,
         hide_index=True
@@ -341,7 +341,7 @@ if page == "Update_price":
                 )
 
             st.success("✅ Trade executed successfully")
-            st.dataframe(df_trade_new)
+            smart_dataframe(df_trade_new)
 
             # 🔁 rerun CHỈ SAU KHI INSERT XONG
             st.rerun()
@@ -429,7 +429,7 @@ if page == "Cash":
     ]
 
     st.subheader("📋 Trade Store")
-    st.dataframe(
+    smart_dataframe(
         df_tradestore_display,
         use_container_width=True,
         hide_index=True
@@ -446,7 +446,7 @@ if page == "Cash":
     ]
 
     st.subheader("📋 Fund Share Trades")
-    st.dataframe(
+    smart_dataframe(
         df_exchange_display,
         use_container_width=True,
         hide_index=True
@@ -787,7 +787,7 @@ if page == "Information":
 
 
         st.subheader("📊 Fund Value")
-        st.dataframe(pd.DataFrame([{
+        smart_dataframe(pd.DataFrame([{
             "Invested Value": info["invested_value"],
             "Market Value": info["market_value"],
             "Profit": info["market_value"] - info["invested_value"]
@@ -802,7 +802,7 @@ if page == "Information":
 
 
         st.subheader("👥 Investors List")
-        st.dataframe(info["investors"], use_container_width=True)
+        smart_dataframe(info["investors"], use_container_width=True)
 
 
 
@@ -861,7 +861,7 @@ if page == "Information":
 
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
-    st.dataframe(data["trades"])
+    smart_dataframe(data["trades"])
 
 
 
@@ -884,7 +884,7 @@ if page == "Overall_investor":
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
     st.subheader("📋 Portfolio Summary")
-    st.dataframe(
+    smart_dataframe(
         df,
         use_container_width=True,
         hide_index=True
