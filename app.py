@@ -344,7 +344,7 @@ if not st.session_state.logged_in:
 
             # Luôn trả success để không lộ thông tin
             if not exists:
-                st.success("Nếu email tồn tại, chúng tôi đã gửi link reset.")
+                st.success("Chúng tôi đã gửi link reset.")
                 st.stop()
 
             token = secrets.token_urlsafe(32)
