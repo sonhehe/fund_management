@@ -2,7 +2,7 @@
 # CONFIG
 # ======================
 import hashlib
-
+from scripts.email_utils import send_reset_email
 import streamlit as st
 st.set_page_config(
     page_title="Fund Management System",
@@ -363,30 +363,12 @@ if not st.session_state.logged_in:
 
             reset_link = f"https://fundmanagement.streamlit.app?reset_token={token}"
 
-            response = requests.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {RESEND_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "from": "onboarding@resend.dev",
-                    "to": email,
-                    "subject": "Reset your password",
-                    "html": f"""
-                    <h2>Reset Password</h2>
-                    <p>Click link below:</p>
-                    <a href="{reset_link}">{reset_link}</a>
-                    <p>This link expires in 15 minutes.</p>
-                    """
-                }
-            )
-
-            if response.status_code in (200, 201):
+            try:
+                send_reset_email(email, reset_link)
                 st.success("Nếu email tồn tại, chúng tôi đã gửi link reset.")
-            else:
+            except Exception as e:
                 st.error("Gửi email thất bại")
-                st.write(response.text)
+                st.write(str(e))
     st.stop()
 
 
