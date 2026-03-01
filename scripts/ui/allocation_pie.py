@@ -19,4 +19,18 @@ def render_asset_allocation(df):
 
     fig.update_traces(textinfo="percent+label")
 
+    # 🎨 Dark background
+    fig.update_layout(
+        paper_bgcolor="#0E1A2B",   # toàn bộ nền
+        plot_bgcolor="#0E1A2B",    # nền vùng chart
+        font=dict(color="white")  # chữ trắng cho dễ nhìn
+    )
+    fig.update_layout(
+        paper_bgcolor="#0E1A2B",
+        plot_bgcolor="#0E1A2B",
+        font=dict(color="white"),              # toàn bộ font trắng
+        legend=dict(
+            font=dict(color="white")           # legend trắng
+        )
+    )
     st.plotly_chart(fig, use_container_width=True)

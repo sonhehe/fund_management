@@ -18,6 +18,7 @@ ALLOWED_TABLES = {
     "users",
     "costs",
     "cash",
+    "cash_requests",
     "fundshare_requests",
     "trade_confirmations",
 }
@@ -150,16 +151,22 @@ from decimal import Decimal
 def smart_dataframe(df, table_name, use_container_width=True, hide_index=True):
     df_display = apply_column_labels(df, table_name)
 
-    # Chỉ làm tròn numeric
+    # Chỉ chọn numeric
     numeric_cols = df_display.select_dtypes(include="number").columns
+
+    # Làm tròn
     df_display[numeric_cols] = df_display[numeric_cols].round(2)
-    
+
+    # Format dấu phẩy nghìn
+    df_styled = df_display.style.format(
+        {col: "{:,.2f}" for col in numeric_cols}
+    )
+
     st.dataframe(
-        df_display,
+        df_styled,
         use_container_width=use_container_width,
         hide_index=hide_index
     )
-
 # WRITE (APPEND ONLY)
 # ======================
 def write_table(

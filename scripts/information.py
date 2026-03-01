@@ -221,7 +221,22 @@ def load_investor_portfolio(customer_id: str):
         )
 
 
-
+      #LSNAPRUT
+        cash_requests = pd.read_sql(
+            """
+            SELECT
+                created_at,
+                type,
+                amount,
+                status
+            FROM cash_requests
+            WHERE customer_id = %(cid)s
+            AND status = 'SUCCESS'
+            ORDER BY created_at DESC
+            """,
+            conn,
+            params={"cid": customer_id}
+    )
 
     return {
         "customer_name": investor["customer_name"],
@@ -234,15 +249,7 @@ def load_investor_portfolio(customer_id: str):
         "pnl": pnl,
         "roi": roi,
         "trades": trades,
+        "cash_requests": cash_requests,   # thêm dòng này
     }
-
-
-
-
-
-
-
-
-
-
-
+        
+        

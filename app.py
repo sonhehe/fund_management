@@ -1,39 +1,130 @@
 # ======================
 # CONFIG
-import streamlit as st
+# ======================
+import hashlib
 
-from scripts.ui.allocation_pie import render_asset_allocation
+import streamlit as st
 st.set_page_config(
     page_title="Fund Management System",
     layout="wide"
 )
+from scripts.supabase_client import supabase_admin
+import secrets
+import datetime as dt
+from datetime import date
 import datetime as dt
 import pandas as pd
-import sqlite3
 from sqlalchemy import text
 import plotly.express as px
 import plotly.graph_objects as go
-from sqlalchemy import text
-from scripts.db import write_table, load_table, update_overall_snapshot, run_nav_pipeline, smart_dataframe
+from scripts.supabase_client import supabase
+from scripts.db import (
+    write_table,
+    load_table,
+    update_overall_snapshot,
+    run_nav_pipeline,
+    smart_dataframe
+)
 from scripts.db_engine import get_engine
-from scripts.fundshare import execute_fundshare_trade, get_latest_nav_per_unit, calculate_fundshare_fee
-from scripts.information import load_admin_information, load_investor_portfolio, load_investor_information
-from scripts.auth import authenticate_user, authenticate_admin, register_user, reset_password
+from scripts.fundshare import (
+    execute_fundshare_trade,
+    get_latest_nav_per_unit,
+    calculate_fundshare_fee
+)
+from scripts.information import (
+    load_admin_information,
+    load_investor_portfolio,
+    load_investor_information
+)
 from scripts.pricing_yahoo import update_all_prices
-from scripts.update_prices import update_market_price
-import streamlit as st
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
 from scripts.ui.allocation_pie import render_asset_allocation
 from scripts.ui.relative_performance import render_relative_performance
-from scripts.portfolio import insert_empty_portfolio_row, build_trade_record, update_portfolio
-# ======================
+from scripts.portfolio import (
+    insert_empty_portfolio_row,
+    build_trade_record,
+    update_portfolio
+)
+
+# PASSWORD RECOVERY MODE
+# ==========================
+params = st.query_params
+reset_token = params.get("reset_token")
+
+if reset_token:
+
+    engine = get_engine()
+
+    # Hash token để so sánh
+    hashed_token = hashlib.sha256(reset_token.encode()).hexdigest()
+
+    with engine.connect() as conn:
+        record = conn.execute(text("""
+            SELECT email
+            FROM password_resets
+            WHERE token = :token
+            AND used = false
+            AND expires_at > now()
+        """), {"token": hashed_token}).mappings().fetchone()
+
+    if not record:
+        st.error("Link không hợp lệ hoặc đã hết hạn")
+        st.stop()
+
+    st.title("🔑 Reset Password")
+
+    new_password = st.text_input("New password", type="password")
+    confirm_password = st.text_input("Confirm password", type="password")
+
+    if st.button("Update password"):
+
+        if new_password != confirm_password:
+            st.error("Mật khẩu không khớp")
+            st.stop()
+
+        # Lấy auth_user_id trực tiếp từ DB thay vì scan toàn bộ user
+        with engine.connect() as conn:
+            user_record = conn.execute(text("""
+                SELECT auth_user_id
+                FROM users
+                WHERE email = :email
+            """), {"email": record["email"]}).mappings().fetchone()
+
+        if not user_record:
+            st.error("User không tồn tại")
+            st.stop()
+
+        supabase_admin.auth.admin.update_user_by_id(
+            user_record["auth_user_id"],
+            {"password": new_password}
+        )
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE password_resets
+                SET used = true
+                WHERE token = :token
+            """), {"token": hashed_token})
+
+        st.success("Đổi mật khẩu thành công")
+        st.query_params.clear()
+        st.rerun()
+
+    st.stop()
 # AUTHENTICATION
 # ======================
+# ==========================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+import requests
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 if not st.session_state.logged_in:
     st.title("🔐 Authentication")
 
@@ -46,29 +137,47 @@ if not st.session_state.logged_in:
         username = st.text_input("Username", key="login_username")
         password = st.text_input("Password", type="password", key="login_password")
 
-
         if st.button("Login"):
-            # thử admin trước
-            user = authenticate_admin(username, password)
 
+            engine = get_engine()
 
-            # nếu không phải admin → thử investor
-            if not user:
-                user = authenticate_user(username, password)
+            # 1️⃣ Lấy email từ username
+            with engine.connect() as conn:
+                user_record = conn.execute(
+                    text("""
+                        SELECT email, username, role, customer_id
+                        FROM users
+                        WHERE username = :username
+                    """),
+                    {"username": username}
+                ).mappings().fetchone()
 
-
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.user = user
-                st.session_state.username = user["username"]
-                st.session_state.role = user["role"]
-                st.session_state.customer_id = user.get("customer_id")
-                st.session_state.customer_name = user.get("customer_name")
-                st.session_state.is_admin = (user["role"] == "admin")
-                st.success("Đăng nhập thành công")
-                st.rerun()
-            else:
+            if not user_record:
                 st.error("Sai tài khoản hoặc mật khẩu")
+                st.stop()
+
+            email = user_record["email"]
+
+            # 2️⃣ Login bằng email với Supabase
+            res = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+
+            if res.user is None:
+                st.error("Sai tài khoản hoặc mật khẩu")
+                st.stop()
+
+            # 3️⃣ Set session state
+            st.session_state.logged_in = True
+            st.session_state.user = dict(user_record)
+            st.session_state.username = user_record["username"]
+            st.session_state.role = user_record["role"]
+            st.session_state.customer_id = user_record["customer_id"]
+            st.session_state.is_admin = (user_record["role"] == "admin")
+
+            st.success("Đăng nhập thành công")
+            st.rerun()
 
 
     # ===== REGISTER =====
@@ -78,51 +187,206 @@ if not st.session_state.logged_in:
             display_name = st.text_input("Display name")
             email = st.text_input("Email")
             cccd = st.text_input("CCCD / MST")
-            dob = st.date_input("Date of birth")
+
+            today = date.today()
+            min_dob = date(today.year - 100, 1, 1)
+            max_dob = date(today.year - 18, 12, 31)  # >=18 tuổi
+
+            dob = st.date_input(
+                "Date of birth",
+                min_value=min_dob,
+                max_value=max_dob
+            )
             phone = st.text_input("Phone")
             address = st.text_input("Address")
             bank = st.text_input("Bank account")
             role = st.selectbox("Role", ["investor", "organise"])
             password = st.text_input("Password", type="password")
 
-
             submitted = st.form_submit_button("Register")
 
-
         if submitted:
-            result = register_user({
-                "username": username,
-                "display_name": display_name,
+
+            # 1️⃣ Tạo user trong Supabase Auth
+            res = supabase.auth.sign_up({
                 "email": email,
-                "cccd_mst": cccd,
-                "dob": dob,
-                "phone": phone,
-                "address": address,
-                "bank_account": bank,
-                "pw_hash": password,
-                "role": role
+                "password": password
             })
 
+            if res.user is None:
+                st.error("Đăng ký thất bại (Auth)")
+                st.stop()
 
-            if "error" in result:
-                st.error(result["error"])
-            else:
-                st.success("Đăng ký thành công. Bạn có thể đăng nhập.")
+            auth_user_id = res.user.id
 
+            try:
+                engine = get_engine()
 
+                with engine.begin() as conn:
+
+                    prefix = "CN" if role == "investor" else "TC"
+
+                    last_id = conn.execute(
+                        text("""
+                            SELECT MAX(customer_id)
+                            FROM investors
+                            WHERE customer_id LIKE :p
+                        """),
+                        {"p": f"{prefix}%"}
+                    ).scalar()
+
+                    if last_id:
+                        num = int(last_id.replace(prefix, ""))
+                        customer_id = f"{prefix}{num + 1:02d}"
+                    else:
+                        customer_id = f"{prefix}01"
+
+                    # insert users
+                    conn.execute(text("""
+                        INSERT INTO users (
+                            username,
+                            customer_id,
+                            display_name,
+                            email,
+                            phone,
+                            address,
+                            bank_account,
+                            role,
+                            created_at,
+                            auth_user_id
+                        )
+                        VALUES (
+                            :username,
+                            :customer_id,
+                            :display_name,
+                            :email,
+                            :phone,
+                            :address,
+                            :bank_account,
+                            :role,
+                            now(),
+                            :auth_user_id
+                        )
+                    """), {
+                        "username": username,
+                        "customer_id": customer_id,
+                        "display_name": display_name,
+                        "email": email,
+                        "phone": phone,
+                        "address": address,
+                        "bank_account": bank,
+                        "role": role,
+                        "auth_user_id": auth_user_id
+                    })
+
+                    conn.execute(text("""
+                        INSERT INTO investors (
+                            customer_id,
+                            customer_name,
+                            status,
+                            open_account_date,
+                            identity_number,
+                            dob,
+                            phone,
+                            email,
+                            address,
+                            capital,
+                            nos,
+                            bank_account
+                        )
+                        VALUES (
+                            :customer_id,
+                            :customer_name,
+                            'Đang đầu tư',
+                            CURRENT_DATE,
+                            :identity_number,
+                            :dob,
+                            :phone,
+                            :email,
+                            :address,
+                            0,
+                            0,
+                            :bank_account
+                        )
+                    """), {
+                        "customer_id": customer_id,
+                        "customer_name": display_name,
+                        "identity_number": cccd,
+                        "dob": dob.isoformat(),
+                        "phone": phone,
+                        "email": email,
+                        "address": address,
+                        "bank_account": bank
+                    })
+
+                st.success("Đăng ký thành công")
+
+            except Exception as e:
+                # nếu DB fail → xóa user bên Supabase để tránh lệch dữ liệu
+                supabase_admin.auth.admin.delete_user(auth_user_id)
+                st.error(f"Lỗi DB: {e}")
     # ===== FORGOT PASSWORD =====
     with tab3:
-        u = st.text_input("Username", key="fp_username")
-        new_pw = st.text_input("New password", type="password", key="fp_password")
+        with st.form("forgot_form"):
+            email = st.text_input("Email")
+            submitted = st.form_submit_button("Send reset link")
 
+        if submitted:
 
-        if st.button("Reset password"):
-            if reset_password(u, new_pw):
-                st.success("Đổi mật khẩu thành công")
+            engine = get_engine()
+
+            # Check email tồn tại (tránh email enumeration)
+            with engine.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT 1 FROM users WHERE email = :email"),
+                    {"email": email}
+                ).fetchone()
+
+            # Luôn trả success để không lộ thông tin
+            if not exists:
+                st.success("Nếu email tồn tại, chúng tôi đã gửi link reset.")
+                st.stop()
+
+            token = secrets.token_urlsafe(32)
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
+            expires = dt.datetime.utcnow() + dt.timedelta(minutes=15)
+
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO password_resets (email, token, expires_at, used)
+                    VALUES (:email, :token, :expires, false)
+                """), {
+                    "email": email,
+                    "token": hashed_token,
+                    "expires": expires
+                })
+
+            reset_link = f"https://fundmanagement.streamlit.app?reset_token={token}"
+
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": "onboarding@resend.dev",
+                    "to": email,
+                    "subject": "Reset your password",
+                    "html": f"""
+                    <h2>Reset Password</h2>
+                    <p>Click link below:</p>
+                    <a href="{reset_link}">{reset_link}</a>
+                    <p>This link expires in 15 minutes.</p>
+                    """
+                }
+            )
+
+            if response.status_code in (200, 201):
+                st.success("Nếu email tồn tại, chúng tôi đã gửi link reset.")
             else:
-                st.error("Không tìm thấy tài khoản")
-
-
+                st.error("Gửi email thất bại")
+                st.write(response.text)
     st.stop()
 
 
@@ -133,8 +397,7 @@ if not st.session_state.logged_in:
 # SIDEBAR
 # ======================
 st.sidebar.title("📁 Navigation")
-role = st.session_state.role
-
+role = st.session_state.get("role")
 
 PAGE_MAP = {}
 
@@ -163,9 +426,10 @@ selected_label = st.sidebar.selectbox(
 page = PAGE_MAP[selected_label]
 with st.sidebar:
     st.markdown("---")
-    if st.button("🚪 Đăng xuất"):
+    if st.button("🚪 Log out"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
+            supabase.auth.sign_out()
         st.rerun()
 
 
@@ -245,24 +509,15 @@ if page == "Update_price":
     df_port["ticker"] = df_port["ticker"].str.upper()
 
 # 👉 LẤY TICKER TỪ PORTFOLIO
-    TICKERS = (
-        df_port.loc[
-            (df_port["asset_type"] == "Stock") & 
-            (df_port["ticker"].notna()),
-            "ticker"
-        ]
-        .unique()
-        .tolist()
-    )
-
+   
 
     engine = get_engine()
     if st.button("🔄 Update Market Prices (Yahoo)"):
         with st.spinner("Fetching prices from Yahoo Finance..."):
-           update_all_prices(engine, TICKERS)
+           update_all_prices(engine)
 
 
-        st.success(f"✅ Updated {len(TICKERS)} stock prices")
+        st.success(f"✅ Updated stock prices")
         st.rerun()
 
     df_port["ticker"] = df_port["ticker"].str.upper()
@@ -766,30 +1021,14 @@ if page == "Information":
     # ======================
     if role == "admin":
         st.header("🧾 Fund Information (Admin)")
-
-
-
-
         info = load_admin_information()
-
-
-
-
         col1, col2, col3 = st.columns(3)
-
-
-
 
         col1.metric("💰 Cash Balance", f"{info['cash']:,.0f}")
         col2.metric("📦 Total Fund Shares", f"{info['total_ccq']:,.2f}")
         col3.metric("📈 Fund Return", f"{info['interest']*100:.2f}%")
 
-
-
-
         st.divider()
-
-
 
 
         st.subheader("📊 Fund Value")
@@ -868,8 +1107,13 @@ if page == "Information":
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
     smart_dataframe(data["trades"], "fundshare_trades", use_container_width=True, hide_index=True)
-
-
+    st.subheader("💳 Lịch sử nạp / rút tiền")
+    smart_dataframe(
+        data["cash_requests"],
+        "cash_requests",
+        use_container_width=True,
+        hide_index=True
+    )
 
 
 # ======================

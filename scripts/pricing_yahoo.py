@@ -2,96 +2,107 @@ import yfinance as yf
 from sqlalchemy import text
 
 
-
-
-# ===== 1. LẤY GIÁ 1 MÃ =====
+# ==============================
+# 1️⃣ LẤY GIÁ
+# ==============================
 def get_close_price(ticker: str) -> dict:
-    yf_ticker = ticker.upper() + ".VN"
-    data = yf.Ticker(yf_ticker).history(period="5d")
 
+    ticker_clean = ticker.upper().replace(".VN", "")
+    yf_ticker = ticker_clean + ".VN"
+
+    data = yf.Ticker(yf_ticker).history(period="5d")
 
     if data.empty:
         raise ValueError(f"No data for {ticker}")
 
-
     last = data.iloc[-1]
 
-
     return {
-        "ticker": ticker.upper(),
+        "ticker": ticker_clean,
         "close_price": float(last["Close"]),
         "price_date": last.name.date(),
     }
 
 
+# ==============================
+# 2️⃣ LẤY DANH SÁCH STOCK
+# ==============================
+def get_stock_tickers(engine):
 
-
-# ===== 2. UPDATE 1 MÃ =====
-from sqlalchemy import text
-
-
-def update_one_price(engine, ticker: str, source="yfinance"):
-    price = get_close_price(ticker)
-    with engine.begin() as conn:
-        # 1️⃣ upsert price_history
-        conn.execute(
+    with engine.connect() as conn:
+        result = conn.execute(
             text("""
-                INSERT INTO price_history (
-                    ticker,
-                    close_price,
-                    price_date,
-                    source
-                )
-                VALUES (
-                    :ticker,
-                    :close_price,
-                    :price_date,
-                    :source
-                )
-                ON CONFLICT (ticker, price_date)
-                DO UPDATE SET
-                    close_price = EXCLUDED.close_price,
-                    source = EXCLUDED.source,
-                    created_at = now();
-            """),
-            {
-                "ticker": price["ticker"],
-                "close_price": price["close_price"],
-                "price_date": price["price_date"],
-                "source": source
-            }
+                SELECT DISTINCT ticker
+                FROM portfolio
+                WHERE asset_type = 'Stock'
+                AND ticker IS NOT NULL
+            """)
         )
 
-        # 2️⃣ update portfolio price + price_date
-        conn.execute(
-            text("""
-                UPDATE portfolio
-                SET
-                    market_price = :close_price,
-                    price_date   = :price_date
-                WHERE ticker = :ticker;
-            """),
-            {
-                "ticker": price["ticker"],
-                "close_price": price["close_price"],
-                "price_date": price["price_date"]
-            }
-        )
+        tickers = [row[0] for row in result]
 
-# ===== 3. UPDATE TOÀN BỘ =====
-def update_all_prices(engine, tickers: list[str]) -> int:
+    return tickers
+
+
+# ==============================
+# 3️⃣ UPDATE ALL
+# ==============================
+def update_all_prices(engine):
+
+    tickers = get_stock_tickers(engine)
+
+    if not tickers:
+        print("No stock tickers found.")
+        return 0
+
     count = 0
 
+    # 🔥 mở 1 transaction duy nhất
+    with engine.begin() as conn:
 
-    for t in tickers:
-        try:
-            update_one_price(engine, t)
-            count += 1
-        except Exception as e:
-            print(f"[WARN] {t}: {e}")
+        for ticker in tickers:
+            try:
+                price = get_close_price(ticker)
 
+                # UPSERT price_history
+                conn.execute(
+                    text("""
+                        INSERT INTO price_history (
+                            ticker,
+                            close_price,
+                            price_date,
+                            source
+                        )
+                        VALUES (
+                            :ticker,
+                            :close_price,
+                            :price_date,
+                            'yfinance'
+                        )
+                        ON CONFLICT (ticker, price_date)
+                        DO UPDATE SET
+                            close_price = EXCLUDED.close_price,
+                            source = EXCLUDED.source,
+                            created_at = now();
+                    """),
+                    price
+                )
+
+                # UPDATE portfolio
+                conn.execute(
+                    text("""
+                        UPDATE portfolio
+                        SET
+                            market_price = :close_price,
+                            price_date   = :price_date
+                        WHERE ticker = :ticker
+                    """),
+                    price
+                )
+
+                count += 1
+
+            except Exception as e:
+                print(f"[WARN] {ticker}: {e}")
 
     return count
-
-
-
