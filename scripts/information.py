@@ -139,38 +139,25 @@ def load_investor_information(customer_id: str):
     return dict(row)
 # ======================
 # INVESTOR – PORTFOLIO
-# ======================
+from decimal import Decimal
+
 def load_investor_portfolio(customer_id: str):
     engine = get_engine()
 
-
-
-
     with engine.connect() as conn:
-        # 1️⃣ Thông tin tổng hợp
+
         investor = conn.execute(
             text("""
-                SELECT
-                    customer_name,
-                    nos,
-                    capital,
-                    current_cash
+                SELECT customer_name, current_cash
                 FROM investors
                 WHERE customer_id = :cid
             """),
             {"cid": customer_id}
         ).mappings().fetchone()
 
-
-
-
         if investor is None:
             return None
 
-
-
-
-        # 2️⃣ Giá CCQ hiện tại (nav_per_unit)
         nav_per_unit = conn.execute(
             text("""
                 SELECT nav_per_unit
@@ -180,48 +167,16 @@ def load_investor_portfolio(customer_id: str):
             """)
         ).scalar()
 
-
-        if nav_per_unit is None:
-            nav_per_unit = 0
-
-
-
-
-        nos = float(investor["nos"] or 0)
-        capital = float(investor["capital"] or 0)
-        current_cash = float(investor.get("current_cash", 0) or 0)
-        nav_per_unit = float(nav_per_unit or 0)
-
-        market_value = nos * nav_per_unit
-        total_assets = market_value + current_cash
-        pnl = market_value - capital
-
-        roi = (pnl / capital * 100) if capital > 0 else 0
-
-
-
-
-        # 3️⃣ Lịch sử giao dịch CCQ
         trades = pd.read_sql(
             """
-            SELECT
-                trade_date,
-                side,
-                quantity,
-                price,
-                cost,
-                cash_flow,
-                current_fs
+            SELECT trade_date, side, quantity, price
             FROM fundshare_trades
             WHERE customer_id = %(cid)s
-            ORDER BY trade_date DESC
+            ORDER BY trade_date
             """,
             conn,
             params={"cid": customer_id}
         )
-
-
-      #LSNAPRUT
         cash_requests = pd.read_sql(
             """
             SELECT
@@ -237,19 +192,80 @@ def load_investor_portfolio(customer_id: str):
             conn,
             params={"cid": customer_id}
     )
+    # =============================
+    # SAFE TYPE CONVERSION
+    # =============================
+
+    nav_per_unit = float(nav_per_unit or 0)
+    current_cash = float(investor["current_cash"] or 0)
+
+    # =============================
+    # FIFO ACCOUNTING
+    # =============================
+
+    inventory = []
+    realized_pnl = 0.0
+    total_buy_cash = 0.0
+
+    for _, row in trades.iterrows():
+
+        qty = float(row["quantity"] or 0)
+        price = float(row["price"] or 0)
+
+        if row["side"] == "BUY":
+            inventory.append({"qty": qty, "price": price})
+            total_buy_cash += qty * price
+
+        elif row["side"] == "SELL":
+
+            sell_qty = qty
+
+            while sell_qty > 0 and inventory:
+                lot = inventory[0]
+
+                take = min(sell_qty, lot["qty"])
+
+                realized_pnl += take * (price - lot["price"])
+
+                lot["qty"] -= take
+                sell_qty -= take
+
+                if lot["qty"] <= 1e-9:
+                    inventory.pop(0)
+
+    # =============================
+    # POSITION CALCULATION
+    # =============================
+
+    total_units = float(sum(lot["qty"] for lot in inventory))
+    cost_remaining = float(sum(lot["qty"] * lot["price"] for lot in inventory))
+
+    market_value = float(total_units * nav_per_unit)
+    unrealized_pnl = float(market_value - cost_remaining)
+    total_pnl = float(realized_pnl + unrealized_pnl)
+
+    total_assets = float(market_value + current_cash)
+
+    # =============================
+    # ROI (giữ nguyên logic bạn đang dùng)
+    # =============================
+
+    net_invested = float(total_buy_cash)
+
+    roi = (total_pnl / net_invested * 100) if net_invested > 0 else 0.0
 
     return {
         "customer_name": investor["customer_name"],
-        "nos": investor["nos"],
-        "capital": investor["capital"],
+        "nos": total_units,
         "nav_per_unit": nav_per_unit,
         "market_value": market_value,
+        "cost_basis_remaining": cost_remaining,
+        "realized_pnl": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+        "total_pnl": total_pnl,
+        "roi": roi,
         "current_cash": current_cash,
         "total_assets": total_assets,
-        "pnl": pnl,
-        "roi": roi,
         "trades": trades,
-        "cash_requests": cash_requests,   # thêm dòng này
+        "cash_requests": cash_requests,
     }
-        
-        

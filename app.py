@@ -42,7 +42,6 @@ from scripts.ui.nav_service import get_nav_df
 from scripts.ui.allocation_pie import render_asset_allocation
 from scripts.ui.relative_performance import render_relative_performance
 from scripts.portfolio import (
-    insert_empty_portfolio_row,
     build_trade_record,
     update_portfolio
 )
@@ -139,46 +138,51 @@ if not st.session_state.logged_in:
 
         if st.button("Login"):
 
-            engine = get_engine()
+            try:
+                engine = get_engine()
 
-            # 1️⃣ Lấy email từ username
-            with engine.connect() as conn:
-                user_record = conn.execute(
-                    text("""
-                        SELECT email, username, role, customer_id
-                        FROM users
-                        WHERE username = :username
-                    """),
-                    {"username": username}
-                ).mappings().fetchone()
+                # 1️⃣ Lấy email từ username
+                with engine.connect() as conn:
+                    user_record = conn.execute(
+                        text("""
+                            SELECT email, username, role, customer_id
+                            FROM users
+                            WHERE username = :username
+                        """),
+                        {"username": username}
+                    ).mappings().fetchone()
 
-            if not user_record:
+                if not user_record:
+                    st.error("Sai tài khoản hoặc mật khẩu")
+                    st.stop()
+
+                email = user_record["email"]
+
+                # 2️⃣ Login Supabase
+                res = supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password
+                })
+
+                if res.user is None:
+                    st.error("Sai tài khoản hoặc mật khẩu")
+                    st.stop()
+
+                # 3️⃣ Set session
+                st.session_state.logged_in = True
+                st.session_state.user = dict(user_record)
+                st.session_state.username = user_record["username"]
+                st.session_state.role = user_record["role"]
+                st.session_state.customer_id = user_record["customer_id"]
+                st.session_state.is_admin = (user_record["role"] == "admin")
+
+                st.success("Đăng nhập thành công")
+                st.rerun()
+
+            except Exception:
+                # 🔒 Không lộ lỗi thật
                 st.error("Sai tài khoản hoặc mật khẩu")
                 st.stop()
-
-            email = user_record["email"]
-
-            # 2️⃣ Login bằng email với Supabase
-            res = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
-
-            if res.user is None:
-                st.error("Sai tài khoản hoặc mật khẩu")
-                st.stop()
-
-            # 3️⃣ Set session state
-            st.session_state.logged_in = True
-            st.session_state.user = dict(user_record)
-            st.session_state.username = user_record["username"]
-            st.session_state.role = user_record["role"]
-            st.session_state.customer_id = user_record["customer_id"]
-            st.session_state.is_admin = (user_record["role"] == "admin")
-
-            st.success("Đăng nhập thành công")
-            st.rerun()
-
 
     # ===== REGISTER =====
     with tab2:
@@ -476,7 +480,7 @@ if page == "Overall":
     render_asset_allocation(df)
     st.subheader("📈 Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
-    st.plotly_chart(fig_perf, use_container_width=True)
+    st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
 
 # ===== BAR: RETURNS =====
 if page == "Update_price":
@@ -537,11 +541,6 @@ if page == "Update_price":
                     f"Available: {max_qty}"
                 )
 
-        # 3️⃣ BUY: auto-add ticker nếu chưa có
-        elif side == "BUY" and ticker not in portfolio_map:
-            insert_empty_portfolio_row(engine, ticker, price)
-            st.info(f"➕ Added new ticker {ticker} to portfolio")
-
         if error:
             st.error(error)
 
@@ -570,22 +569,11 @@ if page == "Update_price":
                     trade
                 )
 
-                # 2️⃣ apply cash flow
-                conn.execute(
-                    text("""
-                        UPDATE portfolio
-                        SET net_value = net_value + :cash_flow
-                        WHERE asset_type = 'Cash'
-                        OR ticker = 'YTM'
-                    """),
-                    {"cash_flow": trade["cash_flow"]}
-                )
-
             st.success("✅ Trade executed successfully")
             st.dataframe(df_trade_new)
 
             # 🔁 rerun CHỈ SAU KHI INSERT XONG
-            st.rerun()
+            st.rerun(after=5) 
 
     if st.button("Update Portfolio"):
         engine = get_engine()
@@ -666,7 +654,7 @@ if page == "Cash":
     df_tradestore = df_tradestore.sort_values("trade_date", ascending=False)
 
     df_tradestore_display = df_tradestore[
-        ["trade_id", "trade_date", "cash_flow"]
+        ["trade_id", "trade_date", "cash_flow", "ticker", "side", "quantity", "price"]
     ]
 
     st.subheader("📋 Trade Store")
@@ -684,7 +672,7 @@ if page == "Cash":
     df_exchange = df_exchange.sort_values("trade_date", ascending=False)
 
     df_exchange_display = df_exchange[
-        ["trade_date", "customer_id", "cash_flow"]
+        ["trade_date", "customer_id", "cash_flow", "side"]
     ]
 
     st.subheader("📋 Fund Share Trades")
@@ -710,112 +698,169 @@ elif page == "Exchange_FundShare":
 
 
 
+
+
     # ======================
-    # INVESTOR / ORGANISE
+    # TRADING BLOCK
     # ======================
     if not is_admin:
+        can_submit = False
+        fee = 0.0
+        amount = 0.0
+        quantity = 0.0
+
+        portfolio = load_investor_portfolio(st.session_state.customer_id)
+
+        if portfolio is None:
+            st.warning("Không tải được danh mục.")
+            st.stop()
+
+        current_cash = float(portfolio.get("current_cash", 0) or 0)
+        current_units = float(portfolio.get("nos", 0) or 0)
+        nav_price = float(get_latest_nav_per_unit() or 0)
+
+        if nav_price <= 0:
+            st.error("NAV chưa khả dụng.")
+            st.stop()
+
+        st.subheader("📈 Giao dịch CCQ")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Giá CCQ", f"{nav_price:,.2f}")
+        col2.metric("Tiền khả dụng", f"{current_cash:,.0f}")
+        col3.metric("CCQ đang giữ", f"{current_units:,.4f}")
+
         side = st.selectbox("Side", ["Buy", "Sell"])
 
-
-
-
-        nav_price = get_latest_nav_per_unit()
-
-
-
+        # ======================
+        # INPUT
+        # ======================
 
         if side == "Buy":
             amount = st.number_input(
-                "Investment Amount (VND)",
-                min_value=1_000_000.0
+                "Số tiền đầu tư (VND)",
+                min_value=0.0,
+                step=1000.0,
+                format="%.0f"
             )
 
+            fee = float(calculate_fundshare_fee("Buy", amount) or 0)
+            net_value = amount - fee
+            units = net_value / nav_price if nav_price > 0 else 0
 
+            error = None
 
+            if amount <= 0:
+                error = "Số tiền phải > 0"
+            elif amount > current_cash:
+                error = "Vượt quá tiền khả dụng"
+            elif net_value <= 0:
+                error = "Phí không hợp lệ"
+            else:
+                can_submit = True
+                st.write(f"Số CCQ: **{units:,.0f} CCQ**")
+                st.write(f"Phí giao dịch: **{fee:,.0f} VND**")
+                st.write(f"Giá trị thực đầu tư: **{net_value:,.0f} VND**")
 
-            fee = calculate_fundshare_fee("Buy", amount)
-            net_amount = amount - fee
-            units = net_amount / nav_price
-
-
-
-
-            st.info(f"💰 Giá CCQ: {nav_price:,.2f}")
-            st.info(f"💸 Phí giao dịch: {fee:,.0f}")
-            st.info(f"📥 Góp vốn thực tế: {net_amount:,.0f}")
-            st.info(f"📦 CCQ nhận được: {units:,.4f}")
-
-
-
-
-        else:  # SELL
+        else:
             quantity = st.number_input(
-                "Units to Sell",
-                min_value=0.0001
+                "Khối lượng bán",
+                min_value=0.0,
+                max_value=current_units,
+                step=0.1,
+                format="%.4f"
             )
 
+            gross_value = quantity * nav_price
+            fee = float(calculate_fundshare_fee("Sell", gross_value) or 0)
+            net_value = gross_value - fee
 
+            error = None
 
+            if quantity <= 0:
+                error = "Khối lượng phải > 0"
+            elif quantity > current_units:
+                error = "Vượt quá số CCQ đang giữ"
+            elif net_value <= 0:
+                error = "Giá trị bán không hợp lệ"
 
-            gross_amount = quantity * nav_price
-            fee = calculate_fundshare_fee("Sell", gross_amount)
-            net_amount = gross_amount - fee
+            # ======================
+            # SUMMARY
+            # ======================
 
+            st.divider()
 
+            colA, colB = st.columns(2)
+            colA.write(f"Phí giao dịch: **{fee:,.0f} VND**")
+            colB.write(f"Giá trị thực nhận: **{max(net_value,0):,.0f} VND**")
 
+            if error:
+                st.error(error)
+            else:
+                can_submit = True
 
-            st.info(f"💰 Giá CCQ: {nav_price:,.2f}")
-            st.info(f"📤 Giá trị bán: {gross_amount:,.0f}")
-            st.info(f"💸 Phí giao dịch: {fee:,.0f}")
-            st.info(f"💵 Tiền nhận: {net_amount:,.0f}")
+        # ======================
+        # SUBMIT
+        # ======================
 
+        if st.button("📨 Gửi yêu cầu", disabled=not can_submit):
 
-
-
-        # ✅ NÚT GỬI REQUEST CCQ
-        if st.button("📨 Gửi yêu cầu"):
-            df = pd.DataFrame([{
+            request_data = {
                 "customer_id": st.session_state.customer_id,
                 "side": side.upper(),
-                "amount": amount if side == "Buy" else None,
-                "quantity": quantity if side == "Sell" else None,
                 "price": nav_price,
                 "cost": fee,
-                "status": "PENDING"
-            }])
+                "status": "PENDING",
+                "amount": float(amount) if side == "Buy" else 0.0,
+                "quantity": float(quantity) if side == "Sell" else 0.0
+            }
 
-
-
+            df = pd.DataFrame([request_data]).astype({
+                "price": "float64",
+                "cost": "float64",
+                "amount": "float64",
+                "quantity": "float64"
+            })
 
             write_table(df, "fundshare_requests")
-            st.success("✅ Đã gửi yêu cầu cho Admin duyệt")
+
+            st.success("Đã gửi yêu cầu.")
             st.rerun()
+        # ======================
+        # CASH REQUESTS
+        # ======================
 
-
-    # ✅ NÚT GỬI REQUEST TIỀN
         st.divider()
         st.subheader("💸 Nạp / Rút tiền")
 
-
         action = st.selectbox("Chọn", ["Deposit", "Withdraw"])
-        amount = st.number_input("Số tiền", min_value=0.0)
-
+        cash_amount = st.number_input(
+            "Số tiền (VND)",
+            min_value=0.0,
+            step=1_000.0
+        )
 
         if st.button("📨 Gửi yêu cầu tiền"):
+
+            if cash_amount <= 0:
+                st.error("Số tiền phải lớn hơn 0.")
+                st.stop()
+
+            if action == "Withdraw" and cash_amount > current_cash:
+                st.error("Không đủ tiền để rút.")
+                st.stop()
+
             df = pd.DataFrame([{
                 "customer_id": st.session_state.customer_id,
                 "type": action.upper(),
-                "amount": amount,
+                "amount": cash_amount,
                 "status": "PENDING"
             }])
 
-
             write_table(df, "cash_requests")
+
             st.success("✅ Đã gửi yêu cầu")
             st.rerun()
-
-
-
 
     # ======================
     # ADMIN
@@ -1034,68 +1079,108 @@ if page == "Information":
 
 
 
-    # ======================
-    # INVESTOR / ORGANISE VIEW
-    # ======================
+
+# INVESTOR / ORGANISE VIEW
+# ======================
+
     else:
         st.header("👤 My Information")
-
-
-
 
     customer_id = st.session_state.customer_id
     info = load_investor_information(customer_id)
 
-
-
-
     if info is None:
+        st.warning("Không tìm thấy thông tin nhà đầu tư.")
         st.stop()
 
+    # ======================
+    # THÔNG TIN CÁ NHÂN
+    # ======================
 
-    #thong tin ca nhan
     col1, col2 = st.columns(2)
-    col1.write(f"**Customer ID:** {info['customer_id']}")
-    col1.write(f"**Họ tên:** {info['customer_name']}")
-    col1.write(f"**Ngày mở tài khoản:** {info['open_account_date']}")
-    col1.write(f"**Trạng thái:** {info['status']}")
 
+    with col1:
+        st.markdown("### 📌 Thông tin tài khoản")
+        st.write(f"**Customer ID:** {info.get('customer_id','-')}")
+        st.write(f"**Họ tên:** {info.get('customer_name','-')}")
+        st.write(f"**Ngày mở tài khoản:** {info.get('open_account_date','-')}")
+        st.write(f"**Trạng thái:** {info.get('status','-')}")
 
+    with col2:
+        st.markdown("### 📞 Liên hệ")
+        st.write(f"**Email:** {info.get('email','-')}")
+        st.write(f"**SĐT:** {info.get('phone','-')}")
+        st.write(f"**Địa chỉ:** {info.get('address','-')}")
+        st.write(f"**STK ngân hàng:** {info.get('bank_account','-')}")
 
-
-    col2.write(f"**Email:** {info['email']}")
-    col2.write(f"**SĐT:** {info['phone']}")
-    col2.write(f"**Địa chỉ:** {info['address']}")
-    col2.write(f"**STK ngân hàng:** {info['bank_account']}")
     st.divider()
-    #lich su giao dich
-    data = load_investor_portfolio(st.session_state.customer_id)
+
+    # ======================
+    # PORTFOLIO
+    # ======================
+
+    data = load_investor_portfolio(customer_id)
+
+    if data is None:
+        st.warning("Không có dữ liệu danh mục.")
+        st.stop()
+
     st.header("📦 My Portfolio")
-    st.write(f"👤 {data['customer_name']}")
+    st.caption(f"👤 {data['customer_name']}")
 
+    # ======= HÀNG 1 =======
+    col1, col2, col3 = st.columns(3)
 
-    col1, col2 = st.columns(2)
-    col1.metric("CCQ nắm giữ", f"{float(data['nos']):,.2f}")
-    col2.metric("Tiền vốn", f"{data['capital']:,.0f}")
-    col3, col4, col5 = st.columns(3)
-    col3.metric("Giá trị thị trường", f"{float(data['market_value']):,.2f}")
-    col4.metric("Lãi / Lỗ", f"{float(data['pnl']):,.2f}")
-    col5.metric("Số tiền khả dụng", f"{data['current_cash']:,.0f}")
+    col1.metric("CCQ nắm giữ", f"{data['nos']:,.2f}")
+    col2.metric("Giá CCQ hiện tại", f"{data['nav_per_unit']:,.2f}")
+    col3.metric("Giá trị thị trường", f"{data['market_value']:,.0f}")
 
+    # ======= HÀNG 2 =======
+    col4, col5, col6 = st.columns(3)
 
-    st.metric("📈 ROI (%)", f"{float(data['roi']):,.2f}")
-    st.metric("💰 Tổng tài sản", f"{data['total_assets']:,.0f}")
+    col4.metric("Cost còn lại", f"{data['cost_basis_remaining']:,.0f}")
+    col5.metric(
+        "Lãi / Lỗ chưa thực hiện",
+        f"{data['unrealized_pnl']:,.0f}",
+        delta=f"{data['roi']:,.2f}%"
+    )
+    col6.metric("Tiền khả dụng", f"{data['current_cash']:,.0f}")
 
+    # ======= TỔNG TÀI SẢN =======
+    st.metric(
+        "💰 Tổng tài sản",
+        f"{data['total_assets']:,.0f}"
+    )
+
+    st.divider()
+
+    # ======================
+    # LỊCH SỬ GIAO DỊCH
+    # ======================
 
     st.subheader("📜 Lịch sử giao dịch CCQ")
-    smart_dataframe(data["trades"], "fundshare_trades", use_container_width=True, hide_index=True)
+
+    if not data["trades"].empty:
+        smart_dataframe(
+            data["trades"],
+            "fundshare_trades",
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Chưa có giao dịch CCQ.")
+
     st.subheader("💳 Lịch sử nạp / rút tiền")
-    smart_dataframe(
-        data["cash_requests"],
-        "cash_requests",
-        use_container_width=True,
-        hide_index=True
-    )
+
+    if "cash_requests" in data and not data["cash_requests"].empty:
+        smart_dataframe(
+            data["cash_requests"],
+            "cash_requests",
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Chưa có giao dịch nạp / rút.")
 
 
 # ======================
@@ -1110,6 +1195,7 @@ from scripts.information import load_investor_portfolio
 
 if page == "Overall_investor":
     df = load_table("overall_snapshot")
+    df_port = load_table("portfolio")
     df_nav = load_table("nav")
     df_ts= pd.to_datetime(df["snapshot_time"])
     df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
@@ -1119,6 +1205,38 @@ if page == "Overall_investor":
     smart_dataframe(
         df,
         "overall_snapshot",
+        use_container_width=True,
+        hide_index=True
+    )
+    # =========================
+    # PORTFOLIO DISPLAY (VIEW ONLY)
+    # =========================
+
+    cols_to_show = [
+        "ticker",
+        "asset_name",
+        "asset_type",
+        "current_weight",
+        "target_weight"
+    ]
+
+    # Lọc cột an toàn
+    df_display = df_port[[c for c in cols_to_show if c in df_port.columns]].copy()
+
+    # Nhân 100 và format %
+    if "current_weight" in df_display.columns:
+        df_display["current_weight"] = (
+            df_display["current_weight"].astype(float) * 100
+        ).map(lambda x: f"{x:.2f}%")
+
+    if "target_weight" in df_display.columns:
+        df_display["target_weight"] = (
+            df_display["target_weight"].astype(float) * 100
+        ).map(lambda x: f"{x:.2f}%")
+
+    smart_dataframe(
+        df_display,
+        "portfolio_view",
         use_container_width=True,
         hide_index=True
     )
@@ -1138,7 +1256,9 @@ if page == "Overall_investor":
 # ---------- CHARTS ----------
 
     render_asset_allocation(df)
+
+
     st.subheader("📈 Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
-    st.plotly_chart(fig_perf, use_container_width=True, use_container_height=1500)
+    st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
 

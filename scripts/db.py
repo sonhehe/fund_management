@@ -115,6 +115,14 @@ TABLE_COLUMN_LABELS = {
         "current_fs": "Current Fund Shares",
         "cash_flow": "Cash Flow",
     },
+    "cash_requests": {
+        "customer_id": "Customer ID",
+        "type": "Type",
+        "amount": "Amount",
+        "status": "Status",
+        "created_at": "Created At",
+        "updated_at": "Updated At",
+    }
 }
 def apply_column_labels(df, table_name):
     labels = TABLE_COLUMN_LABELS.get(table_name, {})
