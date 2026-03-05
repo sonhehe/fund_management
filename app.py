@@ -93,12 +93,10 @@ if reset_token:
         if not user_record:
             st.error("User not found")
             st.stop()
-
         supabase_admin.auth.admin.update_user_by_id(
             str(user_record["auth_user_id"]),
             {"password": new_password}
         )
-
         with engine.begin() as conn:
             conn.execute(text("""
                 UPDATE password_resets
