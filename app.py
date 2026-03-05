@@ -68,7 +68,7 @@ if reset_token:
         """), {"token": hashed_token}).mappings().fetchone()
 
     if not record:
-        st.error("Link không hợp lệ hoặc đã hết hạn")
+        st.error("Invalid or expired link")
         st.stop()
 
     st.title("🔑 Reset Password")
@@ -79,7 +79,7 @@ if reset_token:
     if st.button("Update password"):
 
         if new_password != confirm_password:
-            st.error("Mật khẩu không khớp")
+            st.error("Passwords do not match")
             st.stop()
 
         # Lấy auth_user_id trực tiếp từ DB thay vì scan toàn bộ user
@@ -91,11 +91,11 @@ if reset_token:
             """), {"email": record["email"]}).mappings().fetchone()
 
         if not user_record:
-            st.error("User không tồn tại")
+            st.error("User not found")
             st.stop()
 
         supabase_admin.auth.admin.update_user_by_id(
-            user_record["auth_user_id"],
+            str(user_record["auth_user_id"]),
             {"password": new_password}
         )
 
@@ -106,7 +106,7 @@ if reset_token:
                 WHERE token = :token
             """), {"token": hashed_token})
 
-        st.success("Đổi mật khẩu thành công")
+        st.success("Password changed successfully")
         st.query_params.clear()
         st.rerun()
 
@@ -125,7 +125,7 @@ load_dotenv()
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 if not st.session_state.logged_in:
-    st.title("🔐 Authentication")
+    st.title("Authentication")
 
 
     tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot password"])
@@ -153,7 +153,7 @@ if not st.session_state.logged_in:
                     ).mappings().fetchone()
 
                 if not user_record:
-                    st.error("Sai tài khoản hoặc mật khẩu")
+                    st.error("Invalid username or password")
                     st.stop()
 
                 email = user_record["email"]
@@ -176,7 +176,7 @@ if not st.session_state.logged_in:
                 st.session_state.customer_id = user_record["customer_id"]
                 st.session_state.is_admin = (user_record["role"] == "admin")
 
-                st.success("Đăng nhập thành công")
+                st.success("Login successful")
                 st.rerun()
 
             except Exception:
@@ -218,7 +218,7 @@ if not st.session_state.logged_in:
             })
 
             if res.user is None:
-                st.error("Đăng ký thất bại (Auth)")
+                st.error("Registration failed")
                 st.stop()
 
             auth_user_id = res.user.id
@@ -323,7 +323,7 @@ if not st.session_state.logged_in:
                         "bank_account": bank
                     })
 
-                st.success("Đăng ký thành công")
+                st.success("Registration successful")
 
             except Exception as e:
                 # nếu DB fail → xóa user bên Supabase để tránh lệch dữ liệu
@@ -348,7 +348,7 @@ if not st.session_state.logged_in:
 
             # Luôn trả success để không lộ thông tin
             if not exists:
-                st.success("Chúng tôi đã gửi link reset.")
+                st.success("Password reset link has been sent  .")
                 st.stop()
 
             token = secrets.token_urlsafe(32)
@@ -369,9 +369,9 @@ if not st.session_state.logged_in:
 
             try:
                 send_reset_email(email, reset_link)
-                st.success("Nếu email tồn tại, chúng tôi đã gửi link reset.")
+                st.success("Password reset link has been sent.")
             except Exception as e:
-                st.error("Gửi email thất bại")
+                st.error("Failed to send email")
                 st.write(str(e))
     st.stop()
 
@@ -382,7 +382,7 @@ if not st.session_state.logged_in:
 
 # SIDEBAR
 # ======================
-st.sidebar.title("📁 Navigation")
+st.sidebar.title("Navigation")
 role = st.session_state.get("role")
 
 PAGE_MAP = {}
@@ -391,17 +391,18 @@ PAGE_MAP = {}
   # ===== ADMIN =====
 if role == "admin":
     PAGE_MAP = {
-        "🏠 Overall": "Overall",
-        "💹 Portfolio": "Update_price",
-        "💹Cash Management": "Cash",
-        "📑 Pending Requests": "Exchange_FundShare",
-        "🧾 Information": "Information",
+        "Overall": "Overall",
+        "Portfolio": "Update_price",
+        "Cash Management": "Cash",
+        "Pending Requests": "Exchange_FundShare",
+        "Content Management": "Content_Management",
+        "Information": "Information",
     }
 else:
     PAGE_MAP = {
-        "🏠 Fund Overview": "Overall_investor",
-        "🔄 Buy / Sell CCQ": "Exchange_FundShare",
-        "🧾 My Information": "Information",
+        "Dashboard": "Overall_investor",
+        "Transactions": "Exchange_FundShare",
+        "Investor Overview": "Information",
     }
 
 
@@ -412,7 +413,7 @@ selected_label = st.sidebar.selectbox(
 page = PAGE_MAP[selected_label]
 with st.sidebar:
     st.markdown("---")
-    if st.button("🚪 Log out"):
+    if st.button("Log out"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
             supabase.auth.sign_out()
@@ -430,25 +431,25 @@ if page == "Overall":
     df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
-    st.subheader("📋 Overall")
+    st.subheader("Overall")
     smart_dataframe(
         df,
         "overall_snapshot",
         use_container_width=True,
         hide_index=True
     )
-    if st.button("📊 Update Overall Snapshot"):
+    if st.button("Update Overall Snapshot"):
             update_overall_snapshot()
-            st.success("✅ Overall snapshot updated successfully")
+            st.success("Overall snapshot updated successfully")
             st.rerun()
-    st.subheader("📋 Costs")
+    st.subheader("Costs")
     smart_dataframe(
         df_costs,
         "costs",
         use_container_width=True,
         hide_index=True
     )
-    st.subheader("📈NAV")
+    st.subheader("NAV")
     smart_dataframe(
         df_nav,
         "nav",
@@ -457,7 +458,7 @@ if page == "Overall":
     )
    
     df_nav = get_nav_df()
-    if st.button("🚀 Run NAV Daily Process"):
+    if st.button("Run NAV Daily Process"):
         engine = get_engine()
         logs, result, error = run_nav_pipeline(engine)
 
@@ -467,7 +468,7 @@ if page == "Overall":
             st.success("NAV finalized")
             st.rerun()
 
-    st.subheader("📈 NAV / CCQ over time")
+    st.subheader("NAV per Unit Over Time")
     fig = render_nav_chart(df_nav)
 
 
@@ -478,13 +479,13 @@ if page == "Overall":
     )
 
     render_asset_allocation(df)
-    st.subheader("📈 Relative Performance vs Total (%)")
+    st.subheader("Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
     st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
 
 # ===== BAR: RETURNS =====
 if page == "Update_price":
-    st.header("💹 Portfolio")
+    st.header("Portfolio")
     df_port = load_table("portfolio")
     smart_dataframe(
         df_port,
@@ -498,12 +499,12 @@ if page == "Update_price":
    
 
     engine = get_engine()
-    if st.button("🔄 Update Market Prices (Yahoo)"):
+    if st.button("Update Market Prices (Yahoo)"):
         with st.spinner("Fetching prices from Yahoo Finance..."):
            update_all_prices(engine)
 
 
-        st.success(f"✅ Updated stock prices")
+        st.success(f"Updated stock prices")
         st.rerun()
 
     df_port["ticker"] = df_port["ticker"].str.upper()
@@ -530,14 +531,14 @@ if page == "Update_price":
 
         # 1️⃣ SELL phải tồn tại ticker
         elif side == "SELL" and ticker not in portfolio_map:
-            error = f"❌ Cannot SELL: {ticker} not found in portfolio"
+            error = f"Cannot SELL: {ticker} not found in portfolio"
 
         # 2️⃣ SELL không được vượt quantity
         elif side == "SELL":
             max_qty = portfolio_map.get(ticker, 0)
             if quantity > max_qty:
                 error = (
-                    f"❌ Cannot SELL {quantity} units of {ticker}. "
+                    f"Cannot SELL {quantity} units of {ticker}. "
                     f"Available: {max_qty}"
                 )
 
@@ -569,10 +570,10 @@ if page == "Update_price":
                     trade
                 )
 
-            st.success("✅ Trade executed successfully")
+            st.success("Trade executed successfully")
             st.dataframe(df_trade_new)
 
-            # 🔁 rerun CHỈ SAU KHI INSERT XONG
+            # rerun CHỈ SAU KHI INSERT XONG
             st.rerun(after=5) 
 
     if st.button("Update Portfolio"):
@@ -643,7 +644,7 @@ if page == "Cash":
             font=dict(color="#EAEAEA", size=13),
         )
 
-        st.subheader("📈 Cash Balance Over Time")
+        st.subheader("Cash Balance Over Time")
         st.plotly_chart(fig_cash, use_container_width=True)
 
     else:
@@ -657,7 +658,7 @@ if page == "Cash":
         ["trade_id", "trade_date", "cash_flow", "ticker", "side", "quantity", "price"]
     ]
 
-    st.subheader("📋 Trade Store")
+    st.subheader("Trade Store")
     smart_dataframe(
         df_tradestore_display,
         "trades",
@@ -675,7 +676,7 @@ if page == "Cash":
         ["trade_date", "customer_id", "cash_flow", "side"]
     ]
 
-    st.subheader("📋 Fund Share Trades")
+    st.subheader("Fund Share Trades")
     smart_dataframe(
         df_exchange_display,
         "fundshare_trades",
@@ -691,8 +692,15 @@ elif page == "Exchange_FundShare":
 
 
 
-    st.header("🔄 Exchange Fund Share")
+    st.header("Exchange Fund Share")
     engine = get_engine()
+    with engine.connect() as conn:
+        setting = conn.execute(text("""
+            SELECT bank_info
+            FROM fund_setting
+            LIMIT 1
+        """)).mappings().fetchone()
+
     is_admin = st.session_state.get("is_admin", False)
 
 
@@ -712,7 +720,7 @@ elif page == "Exchange_FundShare":
         portfolio = load_investor_portfolio(st.session_state.customer_id)
 
         if portfolio is None:
-            st.warning("Không tải được danh mục.")
+            st.warning("Failed to load portfolio.")
             st.stop()
 
         current_cash = float(portfolio.get("current_cash", 0) or 0)
@@ -720,15 +728,15 @@ elif page == "Exchange_FundShare":
         nav_price = float(get_latest_nav_per_unit() or 0)
 
         if nav_price <= 0:
-            st.error("NAV chưa khả dụng.")
+            st.error("NAV is not available")
             st.stop()
 
-        st.subheader("📈 Giao dịch CCQ")
+        st.subheader("Fund Unit Transaction")
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Giá CCQ", f"{nav_price:,.2f}")
-        col2.metric("Tiền khả dụng", f"{current_cash:,.0f}")
-        col3.metric("CCQ đang giữ", f"{current_units:,.4f}")
+        col1.metric("NAV per Unit", f"{nav_price:,.2f}")
+        col2.metric("Available Balance", f"{current_cash:,.0f}")
+        col3.metric("Units Held", f"{current_units:,.4f}")
 
         side = st.selectbox("Side", ["Buy", "Sell"])
 
@@ -738,7 +746,7 @@ elif page == "Exchange_FundShare":
 
         if side == "Buy":
             amount = st.number_input(
-                "Số tiền đầu tư (VND)",
+                "Investment Amount (VND)",
                 min_value=0.0,
                 step=1000.0,
                 format="%.0f"
@@ -751,20 +759,20 @@ elif page == "Exchange_FundShare":
             error = None
 
             if amount <= 0:
-                error = "Số tiền phải > 0"
+                error = "Amount must be greater than 0"
             elif amount > current_cash:
-                error = "Vượt quá tiền khả dụng"
+                error = "Exceeds available balance"
             elif net_value <= 0:
-                error = "Phí không hợp lệ"
+                error = "Invalid fee"
             else:
                 can_submit = True
-                st.write(f"Số CCQ: **{units:,.0f} CCQ**")
-                st.write(f"Phí giao dịch: **{fee:,.0f} VND**")
-                st.write(f"Giá trị thực đầu tư: **{net_value:,.0f} VND**")
+                st.write(f"Number of Units: **{units:,.0f} Fund Units**")
+                st.write(f"Transaction Fee: **{fee:,.0f} VND**")
+                st.write(f"Net Invested Amount: **{net_value:,.0f} VND**")
 
         else:
             quantity = st.number_input(
-                "Khối lượng bán",
+                "Sell Quantity",
                 min_value=0.0,
                 max_value=current_units,
                 step=0.1,
@@ -778,11 +786,11 @@ elif page == "Exchange_FundShare":
             error = None
 
             if quantity <= 0:
-                error = "Khối lượng phải > 0"
+                error = "Quantity must be greater than 0"
             elif quantity > current_units:
-                error = "Vượt quá số CCQ đang giữ"
+                error = "Exceeds units held"
             elif net_value <= 0:
-                error = "Giá trị bán không hợp lệ"
+                error = "Invalid sell amount"
 
             # ======================
             # SUMMARY
@@ -791,8 +799,8 @@ elif page == "Exchange_FundShare":
             st.divider()
 
             colA, colB = st.columns(2)
-            colA.write(f"Phí giao dịch: **{fee:,.0f} VND**")
-            colB.write(f"Giá trị thực nhận: **{max(net_value,0):,.0f} VND**")
+            colA.write(f"Transaction Fee: **{fee:,.0f} VND**")
+            colB.write(f"Net Proceeds: **{max(net_value,0):,.0f} VND**")
 
             if error:
                 st.error(error)
@@ -803,7 +811,7 @@ elif page == "Exchange_FundShare":
         # SUBMIT
         # ======================
 
-        if st.button("📨 Gửi yêu cầu", disabled=not can_submit):
+        if st.button("Submit Request", disabled=not can_submit):
 
             request_data = {
                 "customer_id": st.session_state.customer_id,
@@ -824,30 +832,30 @@ elif page == "Exchange_FundShare":
 
             write_table(df, "fundshare_requests")
 
-            st.success("Đã gửi yêu cầu.")
+            st.success("Request submitted successfully.")
             st.rerun()
         # ======================
         # CASH REQUESTS
         # ======================
 
         st.divider()
-        st.subheader("💸 Nạp / Rút tiền")
+        st.subheader("Deposit / Withdrawal")
 
-        action = st.selectbox("Chọn", ["Deposit", "Withdraw"])
+        action = st.selectbox("Select", ["Deposit", "Withdraw"])
         cash_amount = st.number_input(
-            "Số tiền (VND)",
+            "Amount (VND)",
             min_value=0.0,
             step=1_000.0
         )
 
-        if st.button("📨 Gửi yêu cầu tiền"):
+        if st.button("Submit Fund Request"):
 
             if cash_amount <= 0:
-                st.error("Số tiền phải lớn hơn 0.")
+                st.error("Amount must be greater than 0.")
                 st.stop()
 
             if action == "Withdraw" and cash_amount > current_cash:
-                st.error("Không đủ tiền để rút.")
+                st.error("Insufficient balance.")
                 st.stop()
 
             df = pd.DataFrame([{
@@ -859,8 +867,23 @@ elif page == "Exchange_FundShare":
 
             write_table(df, "cash_requests")
 
-            st.success("✅ Đã gửi yêu cầu")
+            st.success("Request submitted successfully")
             st.rerun()
+
+        # ===== Bank Transfer Info Box =====
+        with engine.connect() as conn:
+            setting = conn.execute(text("""
+                SELECT bank_info
+                FROM fund_setting
+                LIMIT 1
+            """)).mappings().fetchone()
+
+        if setting and setting["bank_info"]:
+            st.divider()
+            st.markdown("### Bank Transfer Information")
+            st.container(border=True).markdown(
+                setting["bank_info"].replace("\n", "  \n")
+            )
 
     # ======================
     # ADMIN
@@ -869,7 +892,7 @@ elif page == "Exchange_FundShare":
 
     # ===== Duyệt CCQ =====
     else:
-        st.subheader("📑 Pending Requests")
+        st.subheader("Pending Requests")
 
 
 
@@ -899,7 +922,7 @@ elif page == "Exchange_FundShare":
 
                     # ===== APPROVE =====
                     with col1:
-                        if st.button("✅ Approve", key=f"approve_{r['id']}"):
+                        if st.button("Approve", key=f"approve_{r['id']}"):
                             try:
                                 execute_fundshare_trade(
                                     customer_id=r["customer_id"],
@@ -908,7 +931,7 @@ elif page == "Exchange_FundShare":
                                     quantity=r["quantity"] if r["side"] == "SELL" else None
                                 )
                             except Exception as e:
-                                st.error(f"❌ Lỗi khi duyệt giao dịch: {e}")
+                                st.error(f"Error while approving transaction: {e}")
                                 st.stop()
 
 
@@ -927,7 +950,7 @@ elif page == "Exchange_FundShare":
 
 
 
-                            st.success("✅ Approved")
+                            st.success("Approved")
                             st.rerun()
 
 
@@ -935,7 +958,7 @@ elif page == "Exchange_FundShare":
 
                     # ===== REJECT =====
                     with col2:
-                        if st.button("❌ Reject", key=f"reject_{r['id']}"):
+                        if st.button("Reject", key=f"reject_{r['id']}"):
                             with engine.begin() as conn:
                                 conn.execute(
                                     text("""
@@ -949,13 +972,13 @@ elif page == "Exchange_FundShare":
 
 
 
-                            st.warning("❌ Request rejected")
+                            st.warning("Request rejected")
                             st.rerun()
  # ===== Duyệt tiền =====
 
 
         st.divider()
-        st.subheader("💰 Cash Requests")
+        st.subheader("Cash Requests")
 
 
         engine = get_engine()
@@ -976,7 +999,7 @@ elif page == "Exchange_FundShare":
 
                 # ===== APPROVE =====
                 with col1:
-                    if st.button("✅ Approve", key=f"cash_app_{r['id']}"):
+                    if st.button("Approve", key=f"cash_app_{r['id']}"):
 
 
                         if r["type"] == "DEPOSIT":
@@ -1013,7 +1036,7 @@ elif page == "Exchange_FundShare":
 
                 # ===== REJECT =====
                 with col2:
-                    if st.button("❌ Reject", key=f"cash_rej_{r['id']}"):
+                    if st.button("Reject", key=f"cash_rej_{r['id']}"):
                         with engine.begin() as conn:
                             conn.execute(text("""
                                 UPDATE cash_requests
@@ -1047,18 +1070,18 @@ if page == "Information":
     # ADMIN VIEW
     # ======================
     if role == "admin":
-        st.header("🧾 Fund Information (Admin)")
+        st.header("Fund Information")
         info = load_admin_information()
         col1, col2, col3 = st.columns(3)
 
-        col1.metric("💰 Cash Balance", f"{info['cash']:,.0f}")
-        col2.metric("📦 Total Fund Shares", f"{info['total_ccq']:,.2f}")
-        col3.metric("📈 Fund Return", f"{info['interest']*100:.2f}%")
+        col1.metric("Cash Balance", f"{info['cash']:,.0f}")
+        col2.metric("Total Fund Shares", f"{info['total_ccq']:,.2f}")
+        col3.metric("Fund Return", f"{info['interest']*100:.2f}%")
 
         st.divider()
 
 
-        st.subheader("📊 Fund Value")
+        st.subheader("Fund Value")
         st.dataframe(pd.DataFrame([{
             "Invested Value": info["invested_value"],
             "Market Value": info["market_value"],
@@ -1090,7 +1113,7 @@ if page == "Information":
     info = load_investor_information(customer_id)
 
     if info is None:
-        st.warning("Không tìm thấy thông tin nhà đầu tư.")
+        st.warning("Investor information not found.")
         st.stop()
 
     # ======================
@@ -1100,18 +1123,18 @@ if page == "Information":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("### 📌 Thông tin tài khoản")
+        st.markdown("### Account Information")
         st.write(f"**Customer ID:** {info.get('customer_id','-')}")
-        st.write(f"**Họ tên:** {info.get('customer_name','-')}")
-        st.write(f"**Ngày mở tài khoản:** {info.get('open_account_date','-')}")
-        st.write(f"**Trạng thái:** {info.get('status','-')}")
+        st.write(f"**Full Name:** {info.get('customer_name','-')}")
+        st.write(f"**Account Opening Date:** {info.get('open_account_date','-')}")
+        st.write(f"**Status:** {info.get('status','-')}")
 
     with col2:
-        st.markdown("### 📞 Liên hệ")
+        st.markdown("### Contact")
         st.write(f"**Email:** {info.get('email','-')}")
-        st.write(f"**SĐT:** {info.get('phone','-')}")
-        st.write(f"**Địa chỉ:** {info.get('address','-')}")
-        st.write(f"**STK ngân hàng:** {info.get('bank_account','-')}")
+        st.write(f"**Phone Number:** {info.get('phone','-')}")
+        st.write(f"**Address:** {info.get('address','-')}")
+        st.write(f"**Bank Account:** {info.get('bank_account','-')}")
 
     st.divider()
 
@@ -1122,7 +1145,7 @@ if page == "Information":
     data = load_investor_portfolio(customer_id)
 
     if data is None:
-        st.warning("Không có dữ liệu danh mục.")
+        st.warning("No portfolio data available.")
         st.stop()
 
     st.header("📦 My Portfolio")
@@ -1131,24 +1154,24 @@ if page == "Information":
     # ======= HÀNG 1 =======
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("CCQ nắm giữ", f"{data['nos']:,.2f}")
-    col2.metric("Giá CCQ hiện tại", f"{data['nav_per_unit']:,.2f}")
-    col3.metric("Giá trị thị trường", f"{data['market_value']:,.0f}")
+    col1.metric("Fund Units Held", f"{data['nos']:,.2f}")
+    col2.metric("Current NAV per Unit", f"{data['nav_per_unit']:,.2f}")
+    col3.metric("Market Value", f"{data['market_value']:,.0f}")
 
     # ======= HÀNG 2 =======
     col4, col5, col6 = st.columns(3)
 
-    col4.metric("Cost còn lại", f"{data['cost_basis_remaining']:,.0f}")
+    col4.metric("Remaining Cost Basis", f"{data['cost_basis_remaining']:,.0f}")
     col5.metric(
-        "Lãi / Lỗ chưa thực hiện",
+        "Unrealized Profit/Loss",
         f"{data['unrealized_pnl']:,.0f}",
         delta=f"{data['roi']:,.2f}%"
     )
-    col6.metric("Tiền khả dụng", f"{data['current_cash']:,.0f}")
+    col6.metric("Available Balance", f"{data['current_cash']:,.0f}")
 
     # ======= TỔNG TÀI SẢN =======
     st.metric(
-        "💰 Tổng tài sản",
+        "Total Assets",
         f"{data['total_assets']:,.0f}"
     )
 
@@ -1158,7 +1181,7 @@ if page == "Information":
     # LỊCH SỬ GIAO DỊCH
     # ======================
 
-    st.subheader("📜 Lịch sử giao dịch CCQ")
+    st.subheader("Fund Unit Transaction History")
 
     if not data["trades"].empty:
         smart_dataframe(
@@ -1168,9 +1191,9 @@ if page == "Information":
             hide_index=True
         )
     else:
-        st.info("Chưa có giao dịch CCQ.")
+        st.info("No fund unit transactions yet")
 
-    st.subheader("💳 Lịch sử nạp / rút tiền")
+    st.subheader("Deposit & Withdrawal History")
 
     if "cash_requests" in data and not data["cash_requests"].empty:
         smart_dataframe(
@@ -1180,7 +1203,7 @@ if page == "Information":
             hide_index=True
         )
     else:
-        st.info("Chưa có giao dịch nạp / rút.")
+        st.info("No deposit or withdrawal transactions yet.")
 
 
 # ======================
@@ -1194,6 +1217,19 @@ from scripts.information import load_investor_portfolio
 
 
 if page == "Overall_investor":
+    engine = get_engine()
+    with engine.connect() as conn:
+        setting = conn.execute(text("""
+            SELECT intro_context
+            FROM fund_setting
+            LIMIT 1
+        """)).mappings().fetchone()
+
+    if setting and setting["intro_context"]:
+        st.markdown("## Fund Introduction")
+        st.info(setting["intro_context"])
+        st.divider()
+
     df = load_table("overall_snapshot")
     df_port = load_table("portfolio")
     df_nav = load_table("nav")
@@ -1201,7 +1237,7 @@ if page == "Overall_investor":
     df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
-    st.subheader("📋 Portfolio Summary")
+    st.subheader("Portfolio Summary")
     smart_dataframe(
         df,
         "overall_snapshot",
@@ -1240,7 +1276,7 @@ if page == "Overall_investor":
         use_container_width=True,
         hide_index=True
     )
-    st.subheader("📈 NAV / CCQ over time")
+    st.subheader("NAV per Unit Over Time")
     fig = render_nav_chart(df_nav)
 
 
@@ -1258,7 +1294,45 @@ if page == "Overall_investor":
     render_asset_allocation(df)
 
 
-    st.subheader("📈 Relative Performance vs Total (%)")
+    st.subheader("Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
     st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
 
+# ======================
+# CONTENT MANAGEMENT
+# ======================
+if page == "Content_Management" and role == "admin":
+
+    st.header("🛠 Fund Content Management")
+
+    engine = get_engine()
+
+    with engine.connect() as conn:
+        setting = conn.execute(text("""
+            SELECT intro_context, bank_info
+            FROM fund_setting
+            LIMIT 1
+        """)).mappings().fetchone()
+
+    intro_default = setting["intro_context"] if setting else ""
+    bank_default = setting["bank_info"] if setting else ""
+
+    intro = st.text_area("Fund Introduction", value=intro_default, height=200)
+    bank = st.text_area("Bank Transfer Information", value=bank_default, height=150)
+
+    if st.button("Save Changes"):
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE fund_setting
+                SET intro_context = :intro,
+                    bank_info = :bank,
+                    update_at = now()
+                WHERE id = 1
+            """), {
+                "intro": intro,
+                "bank": bank
+            })
+
+        st.success("Content updated successfully")
+        st.rerun()

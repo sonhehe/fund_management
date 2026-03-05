@@ -144,7 +144,7 @@ def execute_fundshare_trade(
         current_nos = float(investor["nos"])
         current_capital = float(investor["capital"])
         if side == "BUY" and float(investor["current_cash"]) < amount:
-          raise ValueError("Không đủ tiền")
+          raise ValueError("Insufficient balance")
 
 
 

@@ -3,7 +3,7 @@ import streamlit as st
 
 
 def render_asset_allocation(df):
-    st.subheader("📈 Asset Allocation")
+    st.subheader("Asset Allocation")
 
     df_pie = df[df["attribute"].isin(
         ["Stock", "Bond", "Fund share", "Cash"]
@@ -19,7 +19,7 @@ def render_asset_allocation(df):
 
     fig.update_traces(textinfo="percent+label")
 
-    # 🎨 Dark background
+    # Dark background
     fig.update_layout(
         paper_bgcolor="#0E1A2B",   # toàn bộ nền
         plot_bgcolor="#0E1A2B",    # nền vùng chart
