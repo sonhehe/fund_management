@@ -10,7 +10,7 @@ from scripts.email_utils import send_reset_email
 from scripts.db_engine import get_engine
 
 
-def render():
+def render_auth():
 
     params = st.query_params
     reset_token = params.get("reset_token")
