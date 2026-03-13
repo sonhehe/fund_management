@@ -94,8 +94,8 @@ def render():
                     text("""
                         SELECT COALESCE(SUM(
                             CASE
-                                WHEN side = 'BUY' THEN quantity
-                                WHEN side = 'SELL' THEN -quantity
+                                WHEN LOWER(side) = 'buy' THEN quantity
+                                WHEN LOWER(side) = 'sell' THEN -quantity
                             END
                         ),0)
                         FROM trades
@@ -103,7 +103,6 @@ def render():
                     """),
                     {"ticker": ticker}
                 ).scalar()
-
             if quantity > max_qty:
                 error = (
                     f"Cannot SELL {quantity} units of {ticker}. "
