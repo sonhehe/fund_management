@@ -13,6 +13,12 @@ def render():
 
     st.header("Portfolio")
 
+    engine = get_engine()
+
+    # ======================
+    # LOAD PORTFOLIO
+    # ======================
+
     df_port = load_table("portfolio")
 
     smart_dataframe(
@@ -22,9 +28,12 @@ def render():
         hide_index=True
     )
 
-    df_port["ticker"] = df_port["ticker"].str.upper()
+    if not df_port.empty and "ticker" in df_port.columns:
+        df_port["ticker"] = df_port["ticker"].str.upper()
 
-    engine = get_engine()
+    # ======================
+    # UPDATE MARKET PRICES
+    # ======================
 
     if st.button("Update Market Prices (Yahoo)"):
 
@@ -34,10 +43,22 @@ def render():
         st.success("Updated stock prices")
         st.rerun()
 
-    portfolio_map = (
-        df_port.set_index("ticker")["quantity"].to_dict()
-        if not df_port.empty else {}
-    )
+    # ======================
+    # BUILD PORTFOLIO MAP
+    # ======================
+
+    portfolio_map = {}
+
+    if (
+        not df_port.empty
+        and "ticker" in df_port.columns
+        and "quantity" in df_port.columns
+    ):
+        portfolio_map = df_port.set_index("ticker")["quantity"].to_dict()
+
+    # ======================
+    # TRADE FORM
+    # ======================
 
     with st.form("trade_form"):
 
@@ -51,6 +72,10 @@ def render():
 
         submitted = st.form_submit_button("Submit trade")
 
+    # ======================
+    # TRADE LOGIC
+    # ======================
+
     if submitted:
 
         error = None
@@ -62,10 +87,28 @@ def render():
             error = f"Cannot SELL: {ticker} not found in portfolio"
 
         elif side == "SELL":
-            max_qty = portfolio_map.get(ticker, 0)
+
+            with engine.connect() as conn:
+
+                max_qty = conn.execute(
+                    text("""
+                        SELECT COALESCE(SUM(
+                            CASE
+                                WHEN side = 'BUY' THEN quantity
+                                WHEN side = 'SELL' THEN -quantity
+                            END
+                        ),0)
+                        FROM trades
+                        WHERE ticker = :ticker
+                    """),
+                    {"ticker": ticker}
+                ).scalar()
 
             if quantity > max_qty:
-                error = f"Cannot SELL {quantity} units of {ticker}. Available: {max_qty}"
+                error = (
+                    f"Cannot SELL {quantity} units of {ticker}. "
+                    f"Available: {max_qty}"
+                )
 
         if error:
 
@@ -83,6 +126,8 @@ def render():
                 price=price,
             )
 
+            df_trade_new = pd.DataFrame([trade])
+
             with engine.begin() as conn:
 
                 conn.execute(
@@ -97,11 +142,15 @@ def render():
 
             st.success("Trade executed successfully")
 
+            st.dataframe(df_trade_new)
+
             st.rerun()
 
-    if st.button("Update Portfolio"):
+    # ======================
+    # UPDATE PORTFOLIO
+    # ======================
 
-        engine = get_engine()
+    if st.button("Update Portfolio"):
 
         update_portfolio(engine)
 

@@ -3,14 +3,19 @@
 # ======================
 
 import streamlit as st
+import importlib
+
+from scripts.supabase_client import supabase
 
 st.set_page_config(
     page_title="Fund Management System",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+
 # ======================
-# SESSION
+# SESSION INIT
 # ======================
 
 if "logged_in" not in st.session_state:
@@ -18,7 +23,7 @@ if "logged_in" not in st.session_state:
 
 
 # ======================
-# AUTH PAGE
+# AUTHENTICATION
 # ======================
 
 if not st.session_state.logged_in:
@@ -28,27 +33,34 @@ if not st.session_state.logged_in:
 
 
 # ======================
-# SIDEBAR
+# SIDEBAR NAVIGATION
 # ======================
 
 st.sidebar.title("Navigation")
 
-role = st.session_state.get("role")
+role = st.session_state.get("role", "investor")
+
+# ---------- PAGE MAP ----------
 
 if role == "admin":
+
     PAGE_MAP = {
-        "Overall": "overall_admin",
-        "Portfolio": "portfolio",
-        "Cash Management": "cash",
-        "Pending Requests": "exchange",
-        "Content Management": "content",
-        "Information": "information"
+
+        "📊 Overall": "overall_admin",
+        "📈 Portfolio": "portfolio",
+        "💰 Cash Management": "cash",
+        "📝 Pending Requests": "exchange",
+        "⚙️ Content Management": "content",
+        "👤 Information": "information",
     }
+
 else:
+
     PAGE_MAP = {
-        "Dashboard": "overall_investor",
-        "Transactions": "exchange",
-        "Investor Overview": "information"
+
+        "📊 Dashboard": "overall_investor",
+        "🔄 Transactions": "exchange",
+        "👤 Investor Overview": "information",
     }
 
 
@@ -64,16 +76,19 @@ page = PAGE_MAP[selected_label]
 # LOGOUT
 # ======================
 
-from scripts.supabase_client import supabase
-
 with st.sidebar:
+
     st.markdown("---")
 
     if st.button("Log out"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
 
-        supabase.auth.sign_out()
+        st.session_state.clear()
+
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+
         st.rerun()
 
 
@@ -81,27 +96,17 @@ with st.sidebar:
 # PAGE ROUTER
 # ======================
 
-if page == "overall_admin":
-    from front.overall_admin import render
-    render()
+PAGE_ROUTER = {
 
-elif page == "portfolio":
-    from front.portfolio import render
-    render()
+    "overall_admin": "front.overall_admin",
+    "portfolio": "front.portfolio",
+    "cash": "front.cash",
+    "exchange": "front.exchange",
+    "information": "front.information",
+    "overall_investor": "front.overall_investor",
+    "content": "front.content_management",
+}
 
-elif page == "cash":
-    from front.cash import render
-    render()
+module = importlib.import_module(PAGE_ROUTER[page])
 
-elif page == "exchange":
-    from front.exchange import render
-    render()
-
-elif page == "information":
-    from front.information import render
-    render()
-
-elif page == "overall_investor":
-    from front.overall_investor import render
-    render()
-
+module.render()

@@ -5,37 +5,88 @@ from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.allocation_pie import render_asset_allocation
 from scripts.ui.relative_performance import render_relative_performance
+from scripts.db_engine import get_engine
+from sqlalchemy import text
 
 
 def render():
+    engine = get_engine()
+    with engine.connect() as conn:
+        setting = conn.execute(text("""
+            SELECT intro_context
+            FROM fund_setting
+            LIMIT 1
+        """)).mappings().fetchone()
+
+    if setting and setting["intro_context"]:
+        st.markdown("## Fund Introduction")
+        st.info(setting["intro_context"])
+        st.divider()
 
     df = load_table("overall_snapshot")
-
+    df_port = load_table("portfolio")
     df_nav = load_table("nav")
-
+    df_ts= pd.to_datetime(df["snapshot_time"])
     df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
-
     df_nav = df_nav.sort_values("nav_date")
-
+    # ---------- TABLE ----------
     st.subheader("Portfolio Summary")
-
     smart_dataframe(
         df,
         "overall_snapshot",
         use_container_width=True,
         hide_index=True
     )
+    # =========================
+    # PORTFOLIO DISPLAY (VIEW ONLY)
+    # =========================
 
+    cols_to_show = [
+        "ticker",
+        "asset_name",
+        "asset_type",
+        "current_weight",
+        "target_weight"
+    ]
+
+    # Lọc cột an toàn
+    df_display = df_port[[c for c in cols_to_show if c in df_port.columns]].copy()
+
+    # Nhân 100 và format %
+    if "current_weight" in df_display.columns:
+        df_display["current_weight"] = (
+            df_display["current_weight"].astype(float) * 100
+        ).map(lambda x: f"{x:.2f}%")
+
+    if "target_weight" in df_display.columns:
+        df_display["target_weight"] = (
+            df_display["target_weight"].astype(float) * 100
+        ).map(lambda x: f"{x:.2f}%")
+
+    smart_dataframe(
+        df_display,
+        "portfolio_view",
+        use_container_width=True,
+        hide_index=True
+    )
     st.subheader("NAV per Unit Over Time")
-
     fig = render_nav_chart(df_nav)
 
-    st.plotly_chart(fig, use_container_width=True)
+
+
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False}
+    )
+
+
+# ---------- CHARTS ----------
 
     render_asset_allocation(df)
 
+
     st.subheader("Relative Performance vs Total (%)")
-
     fig_perf = render_relative_performance(df)
-
-    st.plotly_chart(fig_perf, use_container_width=True)
+    st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})

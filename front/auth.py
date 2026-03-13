@@ -10,12 +10,13 @@ from scripts.email_utils import send_reset_email
 from scripts.db_engine import get_engine
 
 
+engine = get_engine()
+
+
 def render_auth():
 
     params = st.query_params
     reset_token = params.get("reset_token")
-
-    engine = get_engine()
 
     # ==========================
     # RESET PASSWORD
@@ -40,10 +41,14 @@ def render_auth():
 
         st.title("Reset Password")
 
-        new_password = st.text_input("New password", type="password")
-        confirm_password = st.text_input("Confirm password", type="password")
+        with st.form("reset_password_form"):
 
-        if st.button("Update password"):
+            new_password = st.text_input("New password", type="password")
+            confirm_password = st.text_input("Confirm password", type="password")
+
+            submitted = st.form_submit_button("Update password")
+
+        if submitted:
 
             if new_password != confirm_password:
                 st.error("Passwords do not match")
@@ -55,6 +60,10 @@ def render_auth():
                     FROM users
                     WHERE email = :email
                 """), {"email": record["email"]}).mappings().fetchone()
+
+            if not user_record:
+                st.error("User not found")
+                st.stop()
 
             supabase_admin.auth.admin.update_user_by_id(
                 str(user_record["auth_user_id"]),
@@ -69,6 +78,7 @@ def render_auth():
                 """), {"token": hashed_token})
 
             st.success("Password changed successfully")
+
             st.query_params.clear()
             st.rerun()
 
@@ -82,19 +92,26 @@ def render_auth():
 
     tab1, tab2, tab3 = st.tabs(["Login", "Register", "Forgot password"])
 
+    # ======================
     # LOGIN
+    # ======================
+
     with tab1:
 
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        with st.form("login_form"):
 
-        if st.button("Login"):
+            username = st.text_input("Username").strip()
+            password = st.text_input("Password", type="password")
+
+            login = st.form_submit_button("Login")
+
+        if login:
 
             with engine.connect() as conn:
                 user = conn.execute(text("""
                     SELECT email, username, role, customer_id
                     FROM users
-                    WHERE username=:u
+                    WHERE username = :u
                 """), {"u": username}).mappings().fetchone()
 
             if not user:
@@ -118,34 +135,42 @@ def render_auth():
 
             st.rerun()
 
+    # ======================
     # REGISTER
+    # ======================
+
     with tab2:
+
         with st.form("register_form"):
-            username = st.text_input("Username")
+
+            username = st.text_input("Username").strip()
             display_name = st.text_input("Display name")
             email = st.text_input("Email")
             cccd = st.text_input("CCCD / MST")
 
             today = date.today()
             min_dob = date(today.year - 100, 1, 1)
-            max_dob = date(today.year - 18, 12, 31)  # >=18 tuổi
+            max_dob = date(today.year - 18, 12, 31)
 
             dob = st.date_input(
                 "Date of birth",
                 min_value=min_dob,
                 max_value=max_dob
             )
+
             phone = st.text_input("Phone")
             address = st.text_input("Address")
             bank = st.text_input("Bank account")
-            role = st.selectbox("Role", ["investor", "organise"])
+
+            # role cố định
+            role = "investor"
+
             password = st.text_input("Password", type="password")
 
             submitted = st.form_submit_button("Register")
 
         if submitted:
 
-            # 1️⃣ Tạo user trong Supabase Auth
             res = supabase.auth.sign_up({
                 "email": email,
                 "password": password
@@ -158,20 +183,16 @@ def render_auth():
             auth_user_id = res.user.id
 
             try:
-                engine = get_engine()
 
                 with engine.begin() as conn:
 
-                    prefix = "CN" if role == "investor" else "TC"
+                    prefix = "CN"
 
-                    last_id = conn.execute(
-                        text("""
-                            SELECT MAX(customer_id)
-                            FROM investors
-                            WHERE customer_id LIKE :p
-                        """),
-                        {"p": f"{prefix}%"}
-                    ).scalar()
+                    last_id = conn.execute(text("""
+                        SELECT MAX(customer_id)
+                        FROM investors
+                        WHERE customer_id LIKE :p
+                    """), {"p": f"{prefix}%"}).scalar()
 
                     if last_id:
                         num = int(last_id.replace(prefix, ""))
@@ -179,7 +200,7 @@ def render_auth():
                     else:
                         customer_id = f"{prefix}01"
 
-                    # insert users
+
                     conn.execute(text("""
                         INSERT INTO users (
                             username,
@@ -260,41 +281,54 @@ def render_auth():
                 st.success("Registration successful")
 
             except Exception as e:
-                # nếu DB fail → xóa user bên Supabase để tránh lệch dữ liệu
-                supabase_admin.auth.admin.delete_user(auth_user_id)
-                st.error(f"Lỗi DB: {e}")
-    
 
+                supabase_admin.auth.admin.delete_user(auth_user_id)
+
+                st.error(f"Database error: {e}")
+
+    # ======================
     # FORGOT PASSWORD
+    # ======================
+
     with tab3:
+
         with st.form("forgot_form"):
+
             email = st.text_input("Email")
+
             submitted = st.form_submit_button("Send reset link")
 
         if submitted:
 
-            engine = get_engine()
-
-            # Check email tồn tại (tránh email enumeration)
             with engine.connect() as conn:
                 exists = conn.execute(
                     text("SELECT 1 FROM users WHERE email = :email"),
                     {"email": email}
                 ).fetchone()
 
-            # Luôn trả success để không lộ thông tin
             if not exists:
-                st.success("Password reset link has been sent  .")
+                st.success("Password reset link has been sent.")
                 st.stop()
 
             token = secrets.token_urlsafe(32)
             hashed_token = hashlib.sha256(token.encode()).hexdigest()
+
             expires = dt.datetime.utcnow() + dt.timedelta(minutes=15)
 
             with engine.begin() as conn:
                 conn.execute(text("""
-                    INSERT INTO password_resets (email, token, expires_at, used)
-                    VALUES (:email, :token, :expires, false)
+                    INSERT INTO password_resets (
+                        email,
+                        token,
+                        expires_at,
+                        used
+                    )
+                    VALUES (
+                        :email,
+                        :token,
+                        :expires,
+                        false
+                    )
                 """), {
                     "email": email,
                     "token": hashed_token,
@@ -309,4 +343,5 @@ def render_auth():
             except Exception as e:
                 st.error("Failed to send email")
                 st.write(str(e))
+
     st.stop()

@@ -332,7 +332,7 @@ def update_overall_snapshot():
 def update_costs(engine):
     with engine.begin() as conn:
         conn.execute(text("""
-            DELETE FROM costs"""))
+            DELETE FROM costs WHER cost_date=:d"""))
         # ===== MANAGEMENT FEE (NAV latest) =====
         conn.execute(
             text("""
@@ -376,132 +376,175 @@ def update_costs(engine):
             {"d": date.today()}
         )
 
+def run_nav_pipeline(engine):
 
-def insert_nav_gross(engine):
-    with engine.begin() as conn:
-        r = conn.execute(
-            text("""
-                SELECT
-                    COALESCE(SUM(quantity * market_price), 0) AS nav_total
-                FROM portfolio
-            """)
-        ).mappings().first()
-
-
-        nav_total = r["nav_total"]
-
-
-        conn.execute(
-            text("""
-                INSERT INTO nav (nav_date, nav_total)
-                VALUES (:d, :t)
-            """),
-            {
-                "d": date.today(),
-                "t": nav_total
-            }
-        )
-
-
-    return nav_total
-def insert_nav_per_unit(engine):
     with engine.begin() as conn:
 
-        # --- NAV GROSS VỪA INSERT ---
-        r = conn.execute(
-            text("""
-                SELECT nav_date, nav_total
-                FROM nav
-                ORDER BY nav_date DESC
-                LIMIT 1
-            """)
-        ).mappings().first()
+        today = date.today()
 
-        if r is None:
-            raise ValueError("No NAV found")
+        # =========================
+        # DELETE TODAY NAV
+        # =========================
 
-        nav_date = r["nav_date"]
-        nav_gross = r["nav_total"]
+        conn.execute(text("""
+            DELETE FROM nav
+            WHERE nav_date = :d
+        """), {"d": today})
 
-        # --- TOTAL COSTS (MANAGEMENT + TRANSACTION) ---
-        c = conn.execute(
-            text("""
-                SELECT
-                    COALESCE(SUM(cost), 0) AS total_cost
-                FROM costs
-                WHERE cost_date = :d
-            """),
-            {"d": nav_date}
-        ).mappings().first()
 
-        total_cost = c["total_cost"]
+        # =========================
+        # NAV GROSS
+        # =========================
 
-        # --- NAV NET ---
+        nav_gross = conn.execute(text("""
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN asset_type = 'Cash'
+                        THEN net_value
+                        ELSE quantity * market_price
+                    END
+                ),0)
+            FROM portfolio
+        """)).scalar()
+
+
+        # =========================
+        # INSERT NAV GROSS
+        # =========================
+
+        conn.execute(text("""
+            INSERT INTO nav (nav_date, nav_total)
+            VALUES (:d, :nav)
+        """), {
+            "d": today,
+            "nav": nav_gross
+        })
+
+
+        # =========================
+        # DELETE TODAY COST
+        # =========================
+
+        conn.execute(text("""
+            DELETE FROM costs
+            WHERE cost_date = :d
+        """), {"d": today})
+
+
+        # =========================
+        # MANAGEMENT FEE
+        # =========================
+
+        conn.execute(text("""
+            INSERT INTO costs (
+                cost_date,
+                cost_type,
+                cost,
+                cost_category,
+                rate
+            )
+            VALUES (
+                :d,
+                'management_fee',
+                :nav * 0.0015 / 365,
+                'Management',
+                0.0015
+            )
+        """), {
+            "d": today,
+            "nav": nav_gross
+        })
+
+
+        # =========================
+        # TRANSACTION FEE
+        # =========================
+
+        conn.execute(text("""
+            INSERT INTO costs (
+                cost_date,
+                cost_type,
+                cost,
+                cost_category,
+                rate
+            )
+            SELECT
+                :d,
+                'transaction_fee',
+                COALESCE(SUM(ABS(cash_flow) * 0.0015),0),
+                'Trading',
+                0.0015
+            FROM fundshare_trades
+            WHERE trade_date = :d
+            AND status='SUCCESS'
+        """), {"d": today})
+
+
+        # =========================
+        # TOTAL COST
+        # =========================
+
+        total_cost = conn.execute(text("""
+            SELECT COALESCE(SUM(cost),0)
+            FROM costs
+            WHERE cost_date = :d
+        """), {"d": today}).scalar()
+
+
         nav_net = nav_gross - total_cost
 
-        # --- CURRENT UNITS ---
-        u = conn.execute(
-            text("""
-                SELECT
-                    COALESCE(SUM(
-                        CASE
-                            WHEN side = 'Buy'  THEN quantity
-                            WHEN side = 'Sell' THEN -quantity
-                        END
-                    ), 0) AS current_units
-                FROM fundshare_trades
-                WHERE trade_date <= :d
-            """),
-            {"d": nav_date}
-        ).mappings().first()
 
-        if u["current_units"] == 0:
-            raise ValueError("Current units = 0")
+        # =========================
+        # CURRENT UNITS
+        # =========================
 
-        nav_per_unit = nav_net / u["current_units"]
+        units = conn.execute(text("""
+            SELECT
+                COALESCE(SUM(
+                    CASE
+                        WHEN side='BUY'
+                        THEN quantity
+                        WHEN side='SELL'
+                        THEN -quantity
+                    END
+                ),0)
+            FROM fundshare_trades
+            WHERE trade_date <= :d
+            AND status='SUCCESS'
+        """), {"d": today}).scalar()
 
-        # --- UPDATE NAV ---
-        conn.execute(
-            text("""
-                UPDATE nav
-                SET
-                    nav_total      = :nav_net,
-                    current_units  = :u,
-                    nav_per_unit   = :p
-                WHERE nav_date = :d
-            """),
-            {
-                "d": nav_date,
-                "nav_net": nav_net,
-                "u": u["current_units"],
-                "p": nav_per_unit
-            }
-        )
 
-    return {
-        "nav_date": nav_date,
-        "nav_gross": nav_gross,
-        "total_cost": total_cost,
-        "nav_net": nav_net,
-        "current_units": u["current_units"],
-        "nav_per_unit": nav_per_unit
-    }
+        if units <= 0:
+            raise ValueError("Outstanding units <= 0")
 
-def run_nav_pipeline(engine):
-    logs = []
 
-    try:
-        logs.append("Step 1: Insert NAV gross")
-        insert_nav_gross(engine)
+        nav_per_unit = nav_net / units
 
-        logs.append("Step 2: Update costs")
-        update_costs(engine)
 
-        logs.append("Step 3: Calculate NAV per unit")
-        result = insert_nav_per_unit(engine)
+        # =========================
+        # UPDATE NAV
+        # =========================
 
-        logs.append("NAV process completed successfully")
-        return logs, result, None
+        conn.execute(text("""
+            UPDATE nav
+            SET
+                nav_total = :nav_net,
+                current_units = :units,
+                nav_per_unit = :p
+            WHERE nav_date = :d
+        """), {
+            "d": today,
+            "nav_net": nav_net,
+            "units": units,
+            "p": nav_per_unit
+        })
 
-    except Exception as e:
-        return logs, None, str(e)
+
+        return {
+            "nav_gross": nav_gross,
+            "total_cost": total_cost,
+            "nav_net": nav_net,
+            "units": units,
+            "nav_per_unit": nav_per_unit
+        }
