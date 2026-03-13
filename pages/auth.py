@@ -120,8 +120,193 @@ def render_auth():
 
     # REGISTER
     with tab2:
-        st.info("Registration form unchanged from original code")
+        with st.form("register_form"):
+            username = st.text_input("Username")
+            display_name = st.text_input("Display name")
+            email = st.text_input("Email")
+            cccd = st.text_input("CCCD / MST")
+
+            today = date.today()
+            min_dob = date(today.year - 100, 1, 1)
+            max_dob = date(today.year - 18, 12, 31)  # >=18 tuổi
+
+            dob = st.date_input(
+                "Date of birth",
+                min_value=min_dob,
+                max_value=max_dob
+            )
+            phone = st.text_input("Phone")
+            address = st.text_input("Address")
+            bank = st.text_input("Bank account")
+            role = st.selectbox("Role", ["investor", "organise"])
+            password = st.text_input("Password", type="password")
+
+            submitted = st.form_submit_button("Register")
+
+        if submitted:
+
+            # 1️⃣ Tạo user trong Supabase Auth
+            res = supabase.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+
+            if res.user is None:
+                st.error("Registration failed")
+                st.stop()
+
+            auth_user_id = res.user.id
+
+            try:
+                engine = get_engine()
+
+                with engine.begin() as conn:
+
+                    prefix = "CN" if role == "investor" else "TC"
+
+                    last_id = conn.execute(
+                        text("""
+                            SELECT MAX(customer_id)
+                            FROM investors
+                            WHERE customer_id LIKE :p
+                        """),
+                        {"p": f"{prefix}%"}
+                    ).scalar()
+
+                    if last_id:
+                        num = int(last_id.replace(prefix, ""))
+                        customer_id = f"{prefix}{num + 1:02d}"
+                    else:
+                        customer_id = f"{prefix}01"
+
+                    # insert users
+                    conn.execute(text("""
+                        INSERT INTO users (
+                            username,
+                            customer_id,
+                            display_name,
+                            email,
+                            phone,
+                            address,
+                            bank_account,
+                            role,
+                            created_at,
+                            auth_user_id
+                        )
+                        VALUES (
+                            :username,
+                            :customer_id,
+                            :display_name,
+                            :email,
+                            :phone,
+                            :address,
+                            :bank_account,
+                            :role,
+                            now(),
+                            :auth_user_id
+                        )
+                    """), {
+                        "username": username,
+                        "customer_id": customer_id,
+                        "display_name": display_name,
+                        "email": email,
+                        "phone": phone,
+                        "address": address,
+                        "bank_account": bank,
+                        "role": role,
+                        "auth_user_id": auth_user_id
+                    })
+
+                    conn.execute(text("""
+                        INSERT INTO investors (
+                            customer_id,
+                            customer_name,
+                            status,
+                            open_account_date,
+                            identity_number,
+                            dob,
+                            phone,
+                            email,
+                            address,
+                            capital,
+                            nos,
+                            bank_account
+                        )
+                        VALUES (
+                            :customer_id,
+                            :customer_name,
+                            'Đang đầu tư',
+                            CURRENT_DATE,
+                            :identity_number,
+                            :dob,
+                            :phone,
+                            :email,
+                            :address,
+                            0,
+                            0,
+                            :bank_account
+                        )
+                    """), {
+                        "customer_id": customer_id,
+                        "customer_name": display_name,
+                        "identity_number": cccd,
+                        "dob": dob.isoformat(),
+                        "phone": phone,
+                        "email": email,
+                        "address": address,
+                        "bank_account": bank
+                    })
+
+                st.success("Registration successful")
+
+            except Exception as e:
+                # nếu DB fail → xóa user bên Supabase để tránh lệch dữ liệu
+                supabase_admin.auth.admin.delete_user(auth_user_id)
+                st.error(f"Lỗi DB: {e}")
+    
 
     # FORGOT PASSWORD
     with tab3:
-        st.info("Forgot password form unchanged from original code")
+        with st.form("forgot_form"):
+            email = st.text_input("Email")
+            submitted = st.form_submit_button("Send reset link")
+
+        if submitted:
+
+            engine = get_engine()
+
+            # Check email tồn tại (tránh email enumeration)
+            with engine.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT 1 FROM users WHERE email = :email"),
+                    {"email": email}
+                ).fetchone()
+
+            # Luôn trả success để không lộ thông tin
+            if not exists:
+                st.success("Password reset link has been sent  .")
+                st.stop()
+
+            token = secrets.token_urlsafe(32)
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
+            expires = dt.datetime.utcnow() + dt.timedelta(minutes=15)
+
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO password_resets (email, token, expires_at, used)
+                    VALUES (:email, :token, :expires, false)
+                """), {
+                    "email": email,
+                    "token": hashed_token,
+                    "expires": expires
+                })
+
+            reset_link = f"https://fundmanagement.streamlit.app?reset_token={token}"
+
+            try:
+                send_reset_email(email, reset_link)
+                st.success("Password reset link has been sent.")
+            except Exception as e:
+                st.error("Failed to send email")
+                st.write(str(e))
+    st.stop()
