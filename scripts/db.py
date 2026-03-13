@@ -198,17 +198,17 @@ def write_table(
 # ======================
 # UPDATE OVERALL SNAPSHOT
 def update_overall_snapshot():
+
     engine = get_engine()
+
     sql = """
-        BEGIN;
 
-
-    -- 1️⃣ Clear snapshot trong ngày
+    -- DELETE snapshot today only
     DELETE FROM overall_snapshot
-    ;
+    WHERE DATE(snapshot_time) = CURRENT_DATE;
 
 
-    -- 2️⃣ TOTAL
+    -- TOTAL
     INSERT INTO overall_snapshot (
         attribute,
         initial_investment,
@@ -220,46 +220,60 @@ def update_overall_snapshot():
     )
     SELECT
         'Total',
+
         SUM(
             CASE
-                WHEN asset_type = 'Cash' THEN net_value
+                WHEN asset_type = 'Cash'
+                THEN net_value
                 ELSE buy_price * quantity
             END
         ),
+
         SUM(
             CASE
-                WHEN asset_type = 'Cash' THEN net_value
+                WHEN asset_type = 'Cash'
+                THEN net_value
                 ELSE market_price * quantity
             END
         ),
+
         SUM(
             CASE
-                WHEN asset_type = 'Cash' THEN 0
+                WHEN asset_type = 'Cash'
+                THEN 0
                 ELSE (market_price - buy_price) * quantity
             END
         ),
+
         (
             SUM(
                 CASE
-                    WHEN asset_type = 'Cash' THEN net_value
+                    WHEN asset_type = 'Cash'
+                    THEN net_value
                     ELSE market_price * quantity
                 END
-            ) /
+            )
+            /
             NULLIF(
                 SUM(
                     CASE
-                        WHEN asset_type = 'Cash' THEN net_value
+                        WHEN asset_type = 'Cash'
+                        THEN net_value
                         ELSE buy_price * quantity
                     END
-                ), 0
+                ),
+                0
             )
         ) - 1,
+
         1.0,
         NOW()
+
     FROM portfolio;
 
 
-    -- 3️⃣ STOCK / BOND / FUND SHARE
+
+    -- STOCK / BOND / FUND SHARE
     INSERT INTO overall_snapshot (
         attribute,
         initial_investment,
@@ -271,25 +285,41 @@ def update_overall_snapshot():
     )
     SELECT
         asset_type,
+
         SUM(buy_price * quantity),
+
         SUM(market_price * quantity),
+
         SUM(market_price * quantity) - SUM(buy_price * quantity),
-        (SUM(market_price * quantity) / NULLIF(SUM(buy_price * quantity),0)) - 1,
-        SUM(market_price * quantity) /
-            (
-                SELECT SUM(
-                    CASE
-                        WHEN asset_type = 'Cash' THEN net_value
-                        ELSE market_price * quantity
-                    END
-                )
-                FROM portfolio
-            ),
+
+        (
+            SUM(market_price * quantity)
+            /
+            NULLIF(SUM(buy_price * quantity),0)
+        ) - 1,
+
+        SUM(market_price * quantity)
+        /
+        (
+            SELECT SUM(
+                CASE
+                    WHEN asset_type = 'Cash'
+                    THEN net_value
+                    ELSE market_price * quantity
+                END
+            )
+            FROM portfolio
+        ),
+
         NOW()
+
     FROM portfolio
-    WHERE asset_type IN ('Stock', 'Bond', 'Fund share')
+    WHERE asset_type IN ('Stock','Bond','Fund share')
     GROUP BY asset_type;
-    -- 3️⃣ CASH
+
+
+
+    -- CASH
     INSERT INTO overall_snapshot (
         attribute,
         initial_investment,
@@ -301,34 +331,40 @@ def update_overall_snapshot():
     )
     SELECT
         'Cash',
+
         SUM(net_value),
+
         SUM(net_value),
+
         0,
+
         0,
-        SUM(net_value) /
-            NULLIF(
-                (
-                    SELECT SUM(
-                        CASE
-                            WHEN asset_type = 'Cash' THEN net_value
-                            ELSE market_price * quantity
-                        END
-                    )
-                    FROM portfolio
-                ), 0
+
+        SUM(net_value)
+        /
+        NULLIF(
+            (
+                SELECT SUM(
+                    CASE
+                        WHEN asset_type='Cash'
+                        THEN net_value
+                        ELSE market_price * quantity
+                    END
+                )
+                FROM portfolio
             ),
+            0
+        ),
+
         NOW()
+
     FROM portfolio
-    WHERE asset_type = 'Cash';
+    WHERE asset_type='Cash';
 
-
-    COMMIT;
     """
-
 
     with engine.begin() as conn:
         conn.execute(text(sql))
-
 
 def update_costs(engine):
     with engine.begin() as conn:

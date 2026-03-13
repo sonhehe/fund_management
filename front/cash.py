@@ -10,8 +10,6 @@ def render():
     st.header("💹Cash")
     df_tradestore = load_table("trades")
     df_exchange = load_table("fundshare_trades")
-    st.subheader("History of cash movements")
-
     df_cash = load_table("cash")
 
     st.subheader("Cash Balance Over Time")
@@ -85,7 +83,7 @@ def render():
     ]
 
     st.subheader("Trade Store")
-    
+
     smart_dataframe(
         df_tradestore_display,
         "trades",
