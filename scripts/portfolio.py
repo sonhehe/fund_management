@@ -1,3 +1,26 @@
+import pandas as pd
+import os
+from sqlalchemy import text
+from datetime import date
+from scripts.db_engine import get_engine
+def build_trade_record(ticker, side, quantity, price, trade_date):
+    side = side.capitalize()
+
+    if side == "Buy":
+        cash_flow = -quantity * price
+    elif side == "Sell":
+        cash_flow = quantity * price
+    else:
+        raise ValueError("Side must be Buy or Sell")
+
+    return {
+        "trade_date": trade_date,
+        "side": side,
+        "ticker": ticker,
+        "quantity": quantity,
+        "price": price,
+        "cash_flow": cash_flow
+    }
 from sqlalchemy import text
 
 
@@ -5,7 +28,7 @@ def update_portfolio(engine):
 
     with engine.begin() as conn:
 
-        # 1️⃣ Insert ticker mới
+        # 1️⃣ Insert ticker mới nếu chưa có
         conn.execute(text("""
             INSERT INTO portfolio (
                 ticker,
@@ -30,11 +53,10 @@ def update_portfolio(engine):
                 CURRENT_DATE
             FROM trades t
             WHERE t.is_processed = FALSE
-            ON CONFLICT (ticker) DO NOTHING
+            ON CONFLICT (ticker) DO NOTHING;
         """))
 
-
-        # 2️⃣ Aggregate trades
+        # 2️⃣ Update positions
         conn.execute(text("""
         WITH trade_agg AS (
 
@@ -43,7 +65,7 @@ def update_portfolio(engine):
 
                 SUM(
                     CASE
-                        WHEN side='Buy'
+                        WHEN side = 'Buy'
                         THEN quantity
                         ELSE 0
                     END
@@ -51,7 +73,7 @@ def update_portfolio(engine):
 
                 SUM(
                     CASE
-                        WHEN side='Sell'
+                        WHEN side = 'Sell'
                         THEN quantity
                         ELSE 0
                     END
@@ -59,7 +81,7 @@ def update_portfolio(engine):
 
                 SUM(
                     CASE
-                        WHEN side='Buy'
+                        WHEN side = 'Buy'
                         THEN quantity * price
                         ELSE 0
                     END
@@ -82,11 +104,9 @@ def update_portfolio(engine):
                 (p.quantity + ta.buy_qty - ta.sell_qty) AS quantity_new,
 
                 CASE
-                    WHEN ta.buy_qty > 0
-                    THEN
+                    WHEN ta.buy_qty > 0 THEN
                         (p.buy_price * p.quantity + ta.buy_value)
-                        / NULLIF(p.quantity + ta.buy_qty,0)
-
+                        / NULLIF(p.quantity + ta.buy_qty, 0)
                     ELSE p.buy_price
                 END AS buy_price_new,
 
@@ -128,35 +148,28 @@ def update_portfolio(engine):
                 END
 
         FROM updated u
-        WHERE p.ticker = u.ticker
+        WHERE p.ticker = u.ticker;
         """))
-
 
         # 3️⃣ Update Cash
         conn.execute(text("""
-
             UPDATE portfolio
             SET net_value = net_value + sub.total_cash
             FROM (
-
                 SELECT
                     COALESCE(SUM(cash_flow),0) AS total_cash
                 FROM trades
                 WHERE is_processed = FALSE
-
             ) sub
-
             WHERE ticker = 'YTM'
-               OR asset_type = 'Cash'
-
+               OR asset_type = 'Cash';
         """))
-
 
         # 4️⃣ Mark processed
         conn.execute(text("""
             UPDATE trades
             SET is_processed = TRUE
-            WHERE is_processed = FALSE
+            WHERE is_processed = FALSE;
         """))
 
-    return "Portfolio updated safely"
+    return "Portfolio updated safely."

@@ -50,7 +50,6 @@ if role == "admin":
         "📈 Portfolio": "portfolio",
         "💰 Cash Management": "cash",
         "📝 Pending Requests": "exchange",
-        "⚙️ Content Management": "content",
     }
 
 else:
