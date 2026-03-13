@@ -22,7 +22,7 @@ if "logged_in" not in st.session_state:
 # ======================
 
 if not st.session_state.logged_in:
-    from pages.auth import render_auth
+    from front.auth import render_auth
     render_auth()
     st.stop()
 
@@ -82,26 +82,26 @@ with st.sidebar:
 # ======================
 
 if page == "overall_admin":
-    from pages.overall_admin import render
+    from front.overall_admin import render
     render()
 
 elif page == "portfolio":
-    from pages.portfolio import render
+    from front.portfolio import render
     render()
 
 elif page == "cash":
-    from pages.cash import render
+    from front.cash import render
     render()
 
 elif page == "exchange":
-    from pages.exchange import render
+    from front.exchange import render
     render()
 
 elif page == "information":
-    from pages.information import render
+    from front.information import render
     render()
 
 elif page == "overall_investor":
-    from pages.overall_investor import render
+    from front.overall_investor import render
     render()
 
