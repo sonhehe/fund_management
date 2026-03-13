@@ -51,7 +51,6 @@ if role == "admin":
         "💰 Cash Management": "cash",
         "📝 Pending Requests": "exchange",
         "⚙️ Content Management": "content",
-        "👤 Information": "information",
     }
 
 else:
@@ -104,7 +103,6 @@ PAGE_ROUTER = {
     "exchange": "front.exchange",
     "information": "front.information",
     "overall_investor": "front.overall_investor",
-    "content": "front.content_management",
 }
 
 module = importlib.import_module(PAGE_ROUTER[page])

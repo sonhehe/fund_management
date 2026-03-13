@@ -133,6 +133,7 @@ def apply_column_labels(df, table_name):
 
 # READ
 # ======================
+@st.cache_data(ttl=120)
 def load_table(table_name: str) -> pd.DataFrame:
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Table '{table_name}' is not allowed")
