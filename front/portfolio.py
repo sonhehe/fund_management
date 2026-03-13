@@ -92,13 +92,8 @@ def render():
 
                 max_qty = conn.execute(
                     text("""
-                        SELECT COALESCE(SUM(
-                            CASE
-                                WHEN LOWER(side) = 'buy' THEN quantity
-                                WHEN LOWER(side) = 'sell' THEN -quantity
-                            END
-                        ),0)
-                        FROM trades
+                        SELECT COALESCE(quantity,0)
+                        FROM portfolio
                         WHERE ticker = :ticker
                     """),
                     {"ticker": ticker}
