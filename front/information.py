@@ -41,7 +41,7 @@ def render():
             "Invested Value": info["invested_value"],
             "Market Value": info["market_value"],
             "Profit": info["market_value"] - info["invested_value"]
-        }]), use_container_width=True)
+        }]), width="stretch")
 
 
 
@@ -52,7 +52,7 @@ def render():
 
 
         st.subheader("👥 Investors List")
-        smart_dataframe(info["investors"], "investors", use_container_width=True)
+        smart_dataframe(info["investors"], "investors", width="stretch")
 
 
 
@@ -142,7 +142,7 @@ def render():
         smart_dataframe(
             data["trades"],
             "fundshare_trades",
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
     else:
@@ -154,7 +154,7 @@ def render():
         smart_dataframe(
             data["cash_requests"],
             "cash_requests",
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
     else:

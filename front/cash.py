@@ -69,7 +69,7 @@ def render():
         )
 
         st.subheader("Cash Balance Over Time")
-        st.plotly_chart(fig_cash, use_container_width=True)
+        st.plotly_chart(fig_cash, width="stretch")
 
     else:
         st.info("No cash snapshot available yet.")
@@ -87,7 +87,7 @@ def render():
     smart_dataframe(
         df_tradestore_display,
         "trades",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -106,6 +106,6 @@ def render():
     smart_dataframe(
         df_exchange_display,
         "fundshare_trades",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )

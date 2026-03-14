@@ -23,7 +23,7 @@ def render():
     smart_dataframe(
         df_ove,
         "overall_snapshot",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -36,7 +36,7 @@ def render():
     smart_dataframe(
         df_costs,
         "costs",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -45,7 +45,7 @@ def render():
     smart_dataframe(
         df_nav,
         "nav",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
    
@@ -67,7 +67,7 @@ def render():
 
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         config={"displayModeBar": False}
     )
 
@@ -76,4 +76,4 @@ def render():
     st.subheader("Relative Performance vs Total (%)")
     
     fig_perf = render_relative_performance(df)
-    st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_perf, width="stretch", config={"displayModeBar": False})

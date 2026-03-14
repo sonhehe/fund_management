@@ -34,7 +34,7 @@ def render():
     smart_dataframe(
         df,
         "overall_snapshot",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
     # =========================
@@ -66,7 +66,7 @@ def render():
     smart_dataframe(
         df_display,
         "portfolio_view",
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
     st.subheader("NAV per Unit Over Time")
@@ -77,7 +77,7 @@ def render():
 
     st.plotly_chart(
         fig,
-        use_container_width=True,
+        width="stretch",
         config={"displayModeBar": False}
     )
 
@@ -89,4 +89,4 @@ def render():
 
     st.subheader("Relative Performance vs Total (%)")
     fig_perf = render_relative_performance(df)
-    st.plotly_chart(fig_perf, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_perf, width="stretch", config={"displayModeBar": False})

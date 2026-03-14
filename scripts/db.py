@@ -157,7 +157,7 @@ def load_table(table_name: str) -> pd.DataFrame:
 
 # ======================
 from decimal import Decimal
-def smart_dataframe(df, table_name, use_container_width=True, hide_index=True):
+def smart_dataframe(df, table_name, width="stretch", hide_index=True):
     df_display = apply_column_labels(df, table_name)
 
     # Chỉ chọn numeric
@@ -173,7 +173,7 @@ def smart_dataframe(df, table_name, use_container_width=True, hide_index=True):
 
     st.dataframe(
         df_styled,
-        use_container_width=use_container_width,
+        width="stretch",
         hide_index=hide_index
     )
 # WRITE (APPEND ONLY)
