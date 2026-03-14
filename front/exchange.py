@@ -352,28 +352,51 @@ def render():
 
                     if st.button("Approve", key=f"cash_app_{r['id']}"):
 
-                        if r["type"] == "DEPOSIT":
-
-                            query = """
-                            UPDATE investors
-                            SET current_cash = current_cash + :amount
-                            WHERE customer_id = :cid
-                            """
-
-                        else:
-
-                            query = """
-                            UPDATE investors
-                            SET current_cash = current_cash - :amount
-                            WHERE customer_id = :cid
-                            """
-
                         with engine.begin() as conn:
 
-                            conn.execute(text(query), {
-                                "amount": r["amount"],
-                                "cid": r["customer_id"]
-                            })
+                            if r["type"] == "DEPOSIT":
+
+                                conn.execute(text("""
+                                    UPDATE investors
+                                    SET current_cash = current_cash + :amount
+                                    WHERE customer_id = :cid
+                                """), {
+                                    "amount": r["amount"],
+                                    "cid": r["customer_id"]
+                                })
+
+                                conn.execute(text("""
+                                    UPDATE portfolio
+                                    SET
+                                        net_value = net_value + :amount,
+                                        market_price = market_price + :amount
+                                    WHERE asset_type = 'Cash'
+                                    OR ticker = 'YTM'
+                                """), {
+                                    "amount": r["amount"]
+                                })
+
+                            else:
+
+                                conn.execute(text("""
+                                    UPDATE investors
+                                    SET current_cash = current_cash - :amount
+                                    WHERE customer_id = :cid
+                                """), {
+                                    "amount": r["amount"],
+                                    "cid": r["customer_id"]
+                                })
+
+                                conn.execute(text("""
+                                    UPDATE portfolio
+                                    SET
+                                        net_value = net_value - :amount,
+                                        market_price = market_price - :amount
+                                    WHERE asset_type = 'Cash'
+                                    OR ticker = 'YTM'
+                                """), {
+                                    "amount": r["amount"]
+                                })
 
                             conn.execute(text("""
                                 UPDATE cash_requests
