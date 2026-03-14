@@ -20,7 +20,9 @@ def render():
     # ======================
 
     df_port = load_table("portfolio")
-
+    if not df_port.empty and "price_date" in df_port.columns:
+        last_update = pd.to_datetime(df_port["price_date"]).max()
+    st.caption(f"Last updated: {last_update:%Y-%m-%d %H:%M:%S}")
     smart_dataframe(
         df_port,
         "portfolio",
