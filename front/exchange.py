@@ -112,7 +112,7 @@ def render_investor(engine):
         st.stop()
 
     current_cash = float(portfolio.get("current_cash", 0) or 0)
-    available_cash = float(portfolio.get("available_cash", current_cash) or 0)
+    available_cash = float(portfolio.get("available_cash", 0) or 0)
     current_units = float(portfolio.get("nos", 0) or 0)
     nav_price = load_nav()
 
@@ -269,7 +269,6 @@ def render_investor(engine):
                         available_cash = available_cash - :amt,
                         blocked_cash = blocked_cash + :amt
                     WHERE customer_id = :cid
-                    AND available_cash >= :amt
                 """), {
                     "amt": amount,
                     "cid": st.session_state.customer_id

@@ -2,157 +2,99 @@ import plotly.graph_objects as go
 import pandas as pd
 
 
-def render_relative_performance(df_snapshot):
+def render_relative_performance(df_price, portfolio_tickers):
 
-    # ======================
-    # SAFETY CHECK
-    # ======================
+    # ===== REMOVE YTM =====
+    portfolio_tickers = [t for t in portfolio_tickers if t != "YTM"]
 
-    if df_snapshot is None or df_snapshot.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            height=400,
-            template="plotly_white",
-            title="No data available"
-        )
-        return fig
+    # ===== FILTER =====
+    df = df_price[df_price["ticker"].isin(portfolio_tickers)].copy()
 
-    required_cols = ["snapshot_time", "attribute", "interest"]
+    if df.empty:
+        return None
 
-    for col in required_cols:
-        if col not in df_snapshot.columns:
-            fig = go.Figure()
-            fig.update_layout(
-                height=400,
-                template="plotly_white",
-                title=f"Missing column: {col}"
-            )
-            return fig
+    df = df.sort_values("date")
 
-    # ======================
-    # GET LATEST SNAPSHOT
-    # ======================
+    # ===== CALC PERFORMANCE =====
+    df["perf"] = df.groupby("ticker")["price"].transform(
+        lambda x: x / x.iloc[0] - 1
+    )
 
-    latest_time = df_snapshot["snapshot_time"].max()
-
-    df_latest = df_snapshot[
-        df_snapshot["snapshot_time"] == latest_time
-    ].copy()
-
-    if df_latest.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            height=400,
-            template="plotly_white",
-            title="No snapshot data"
-        )
-        return fig
-
-    # ======================
-    # GET TOTAL RETURN
-    # ======================
-
-    total_row = df_latest[df_latest["attribute"] == "Total"]
-
-    if total_row.empty:
-        total_interest = 0
-    else:
-        total_interest = total_row["interest"].iloc[0]
-
-    # ======================
-    # RELATIVE PERFORMANCE
-    # ======================
-
-    df_latest["relative_perf"] = (
-        df_latest["interest"] - total_interest
-    ) * 100
-
-    df_plot = df_latest[
-        df_latest["attribute"] != "Total"
-    ].copy()
-
-    if df_plot.empty:
-        fig = go.Figure()
-        fig.update_layout(
-            height=400,
-            template="plotly_white",
-            title="No asset data"
-        )
-        return fig
-
-    df_plot = df_plot.sort_values("relative_perf")
-
-    # ======================
-    # COLORS
-    # ======================
-
-    GREEN = "rgb(0,200,170)"
-    RED = "rgb(255,70,90)"
-
+    # ===== COLOR =====
     colors = [
-        GREEN if x > 0 else RED
-        for x in df_plot["relative_perf"]
+        "#F5C77A",
+        "#5DADE2",
+        "#58D68D",
+        "#EC7063",
+        "#AF7AC5",
+        "#F4D03F",
     ]
-
-    max_abs = max(abs(df_plot["relative_perf"]).max(), 1)
-
-    # ======================
-    # BUILD FIGURE
-    # ======================
 
     fig = go.Figure()
 
-    fig.add_trace(
-        go.Bar(
-            y=df_plot["attribute"],
-            x=df_plot["relative_perf"],
-            orientation="h",
+    # ===== LINE =====
+    for i, ticker in enumerate(df["ticker"].unique()):
+        sub = df[df["ticker"] == ticker]
 
-            marker=dict(
-                color=colors,
-                line=dict(color="rgba(0,0,0,0.1)", width=1)
-            ),
-
-            text=[
-                f"{v:+.2f}%"
-                for v in df_plot["relative_perf"]
-            ],
-
-            textposition="outside",
-
-            hovertemplate="<b>%{y}</b><br>%{x:.2f}%<extra></extra>"
+        fig.add_trace(
+            go.Scatter(
+                x=sub["date"],
+                y=sub["perf"],
+                mode="lines",
+                name=ticker,
+                line=dict(
+                    color=colors[i % len(colors)],
+                    width=2.5
+                ),
+                hovertemplate=(
+                    "<b>%{x|%d/%m/%Y}</b><br>"
+                    f"{ticker}: %{{y:.2%}}"
+                    "<extra></extra>"
+                ),
+            )
         )
+
+    # ===== BASELINE (QUAN TRỌNG) =====
+    fig.add_hline(
+        y=0,
+        line_dash="dash",
+        line_color="rgba(255,255,255,0.25)",
+        line_width=1.5
     )
 
-    # ======================
-    # LAYOUT
-    # ======================
+    # ===== RANGE =====
+    y_min = df["perf"].min()
+    y_max = df["perf"].max()
+    padding = max((y_max - y_min) * 0.3, 0.02)
 
+    # ===== LAYOUT =====
     fig.update_layout(
-
-        height=420,
-
-        template="plotly_white",
+        height=360,
+        plot_bgcolor="#0E1A2B",
+        paper_bgcolor="#0E1A2B",
+        hovermode="x unified",
+        showlegend=True,
 
         xaxis=dict(
-            range=[-max_abs * 1.35, max_abs * 1.35],
-            zeroline=True,
-            zerolinewidth=2,
-            zerolinecolor="black",
-            title="Relative Performance (%)"
+            showgrid=False,
+            tickformat="%d/%m",
+            showspikes=True,
+            spikemode="across",
+            spikesnap="cursor",
+            spikecolor="rgba(245,199,122,0.9)",
+            spikethickness=1.5,
         ),
 
         yaxis=dict(
-            showgrid=False,
-            title=""
+            title="Performance (%)",
+            tickformat=".1%",
+            range=[y_min - padding, y_max + padding],
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.06)",
         ),
 
-        margin=dict(
-            l=30,
-            r=30,
-            t=20,
-            b=40
-        )
+        font=dict(color="#EAEAEA", size=13),
+        margin=dict(l=40, r=20, t=20, b=30),
     )
 
     return fig

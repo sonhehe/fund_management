@@ -68,7 +68,6 @@ def render():
             font=dict(color="#EAEAEA", size=13),
         )
 
-        st.subheader("Cash Balance Over Time")
         st.plotly_chart(fig_cash, width="stretch")
 
     else:

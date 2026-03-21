@@ -71,9 +71,9 @@ def render():
         config={"displayModeBar": False}
     )
 
-    render_asset_allocation(df)
+    render_asset_allocation(df_ove)
 
     st.subheader("Relative Performance vs Total (%)")
     
-    fig_perf = render_relative_performance(df)
+    fig_perf = render_relative_performance(df_nav, df["ticker"].tolist())
     st.plotly_chart(fig_perf, width="stretch", config={"displayModeBar": False})
