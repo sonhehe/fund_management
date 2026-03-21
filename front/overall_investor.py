@@ -1,12 +1,14 @@
 import streamlit as st
 import pandas as pd
+from yfinance import tickers
 
 from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
 from scripts.pricing_yahoo import get_stock_tickers
-from sqlalchemy import engine, text
+from sqlalchemy import text
+from scripts.db_engine import engine, text
 
 
 def render():
@@ -89,8 +91,14 @@ def render():
 
     st.subheader("Relative Performance vs Total (%)")
 
-    tickers = get_stock_tickers(engine)
-
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        df_port = pd.read_sql(text("""
+            SELECT ticker
+            FROM portfolio
+            WHERE quantity > 0
+        """), conn)
+    tickers = df_port["ticker"].tolist()
     fig = render_performance_chart(engine, tickers)
 
     st.plotly_chart(fig, use_container_width=True)

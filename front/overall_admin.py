@@ -7,6 +7,7 @@ from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
 from scripts.pricing_yahoo import get_stock_tickers
 from sqlalchemy import engine, text
+from scripts.db_engine import engine, text
 def render():
     df = load_table("overall_snapshot")
     df_nav = load_table("nav")
@@ -71,12 +72,17 @@ def render():
         config={"displayModeBar": False}
     )
 
-    df_port = load_table("portfolio")
+    
 
     st.subheader("Relative Performance vs Total (%)")
     
-    tickers = get_stock_tickers(engine)
-
+    with engine.connect() as conn:
+        df_port = pd.read_sql(text("""
+            SELECT ticker
+            FROM portfolio
+            WHERE quantity > 0
+        """), conn)
+    tickers = df_port["ticker"].tolist()
     fig = render_performance_chart(engine, tickers)
 
     st.plotly_chart(fig, use_container_width=True)
