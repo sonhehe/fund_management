@@ -72,15 +72,3 @@ def render():
 
     
 
-    st.subheader("Relative Performance vs Total (%)")
-    engine = get_engine()
-    with engine.connect() as conn:
-        df_port = pd.read_sql(text("""
-            SELECT ticker
-            FROM portfolio
-            WHERE quantity > 0
-        """), conn)
-    tickers = df_port["ticker"].tolist()
-    fig = render_performance_chart(engine, tickers)
-
-    st.plotly_chart(fig, use_container_width=True)
