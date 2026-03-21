@@ -156,13 +156,11 @@ def update_portfolio(engine):
             UPDATE portfolio
             SET net_value = net_value + sub.total_cash
             FROM (
-                SELECT
-                    COALESCE(SUM(cash_flow),0) AS total_cash
+                SELECT COALESCE(SUM(cash_flow),0) AS total_cash
                 FROM trades
                 WHERE is_processed = FALSE
             ) sub
-            WHERE ticker = 'YTM'
-               OR asset_type = 'Cash';
+            WHERE asset_type = 'Cash';
         """))
 
         # 4️⃣ Mark processed

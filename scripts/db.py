@@ -133,7 +133,7 @@ def apply_column_labels(df, table_name):
 
 # READ
 # ======================
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=5)
 def load_table(table_name: str) -> pd.DataFrame:
     if table_name not in ALLOWED_TABLES:
         raise ValueError(f"Table '{table_name}' is not allowed")
@@ -157,23 +157,28 @@ def load_table(table_name: str) -> pd.DataFrame:
 
 # ======================
 from decimal import Decimal
-def smart_dataframe(df, table_name, width="stretch", hide_index=True):
-    df_display = apply_column_labels(df, table_name)
+def smart_dataframe(df, table_name, hide_index=True):
 
-    # Chỉ chọn numeric
-    numeric_cols = df_display.select_dtypes(include="number").columns
+    df_display = apply_column_labels(df.copy(), table_name)
 
-    # Làm tròn
-    df_display[numeric_cols] = df_display[numeric_cols].round(2)
+    # ===== NUMERIC =====
+    numeric_cols = df_display.select_dtypes(include=["number"]).columns
 
-    # Format dấu phẩy nghìn
-    df_styled = df_display.style.format(
-        {col: "{:,.2f}" for col in numeric_cols}
-    )
+    for col in numeric_cols:
+        df_display[col] = pd.to_numeric(df_display[col], errors="coerce").round(2)
+        df_display[col] = df_display[col].map(lambda x: f"{x:,.2f}" if pd.notnull(x) else "")
 
+    # ===== DATETIME =====
+    datetime_cols = df_display.select_dtypes(include=["datetime", "datetimetz"]).columns
+
+    for col in datetime_cols:
+        df_display[col] = pd.to_datetime(df_display[col], errors="coerce") \
+            .dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    # ===== DISPLAY =====
     st.dataframe(
-        df_styled,
-        width="stretch",
+        df_display,
+        use_container_width=True,
         hide_index=hide_index
     )
 # WRITE (APPEND ONLY)

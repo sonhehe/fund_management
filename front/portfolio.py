@@ -141,6 +141,38 @@ def render():
             st.rerun()
 
     # ======================
+    # TRADE HISTORY
+    # ======================
+
+    st.divider()
+    st.subheader("Trade History")
+
+    with engine.connect() as conn:
+
+        df_trades = pd.read_sql(text("""
+            SELECT 
+                trade_date,
+                ticker,
+                side,
+                quantity,
+                price,
+                cash_flow
+            FROM trades
+            ORDER BY trade_date DESC
+            LIMIT 200
+        """), conn)
+
+    # ===== DISPLAY =====
+
+    if df_trades.empty:
+        st.info("No trades yet.")
+    else:
+        smart_dataframe(
+            df_trades,
+            "trades",
+            hide_index=True
+        )
+    # ======================
     # UPDATE PORTFOLIO
     # ======================
 

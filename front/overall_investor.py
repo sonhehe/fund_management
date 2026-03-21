@@ -26,13 +26,15 @@ def render():
     df = load_table("overall_snapshot")
     df_port = load_table("portfolio")
     df_nav = load_table("nav")
-    df_ts= pd.to_datetime(df["snapshot_time"])
-    df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
+    if not df.empty and "snapshot_time" in df.columns:
+        df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
+        latest_time = df["snapshot_time"].max()
+        df_ove = df[df["snapshot_time"] == latest_time]
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
     st.subheader("Portfolio Summary")
     smart_dataframe(
-        df,
+        df_ove,
         "overall_snapshot",
         width="stretch",
         hide_index=True
