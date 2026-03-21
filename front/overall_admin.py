@@ -3,7 +3,6 @@ import pandas as pd
 from scripts.db import load_table, smart_dataframe, update_overall_snapshot, run_nav_pipeline
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
-from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
 from sqlalchemy import text
 def render():

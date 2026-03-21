@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
-from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
 from sqlalchemy import text
 
@@ -32,7 +31,7 @@ def render():
     # ---------- TABLE ----------
     st.subheader("Overall")
     smart_dataframe(
-        df,
+        df_ove,
         "overall_snapshot",
         width="stretch",
         hide_index=True
