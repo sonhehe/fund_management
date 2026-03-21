@@ -81,17 +81,14 @@ def render_investor(engine):
         # ===== TRADE REQUESTS =====
         trade_df = pd.read_sql(text("""
             SELECT 
-                trade_date,
                 side,
                 amount,
                 quantity,
                 price,
-                cost,
-                created_at
+                cost
             FROM fundshare_requests
             WHERE customer_id = :cid
             AND status = 'PENDING'
-            ORDER BY created_at DESC
         """), conn, params={"cid": st.session_state.customer_id})
 
         # ===== CASH REQUESTS =====
@@ -286,7 +283,7 @@ def render_investor(engine):
             conn.execute(text("""
                 INSERT INTO fundshare_requests
                 (customer_id, customer_name, side, price, cost, status,
-                amount, quantity, blocked_amount, created_at)
+                amount, quantity, blocked_amount, trade_date)
                 VALUES
                 (:cid, :name, :side, :price, :cost, 'PENDING',
                 :amt, :qty, :blk, :ts)
