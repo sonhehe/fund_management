@@ -73,7 +73,7 @@ def render():
     
 
     st.subheader("Relative Performance vs Total (%)")
-    
+    engine = get_engine()
     with engine.connect() as conn:
         df_port = pd.read_sql(text("""
             SELECT ticker
