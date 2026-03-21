@@ -3,10 +3,9 @@ import pandas as pd
 
 from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
-from scripts.ui.allocation_pie import render_asset_allocation
-from scripts.ui.relative_performance import render_relative_performance
+from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
-from sqlalchemy import text
+from sqlalchemy import engine, text
 
 
 def render():
@@ -88,5 +87,9 @@ def render():
 
 
     st.subheader("Relative Performance vs Total (%)")
-    fig_perf = render_relative_performance(df, df_port["ticker"].tolist())
-    st.plotly_chart(fig_perf, width="stretch", config={"displayModeBar": False})
+
+    tickers = df_port["ticker"].dropna().unique().tolist()
+
+    fig = render_performance_chart(engine, tickers)
+
+    st.plotly_chart(fig, use_container_width=True)

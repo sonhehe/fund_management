@@ -1,21 +1,34 @@
 import plotly.graph_objects as go
 import pandas as pd
+from sqlalchemy import text
 
 
-def render_relative_performance(df_price, portfolio_tickers):
+def render_performance_chart(engine, portfolio_tickers):
 
-    # ===== REMOVE YTM =====
-    portfolio_tickers = [t for t in portfolio_tickers if t != "YTM"]
+    # ===== CLEAN TICKER =====
+    tickers = [t for t in portfolio_tickers if t != "YTM"]
 
-    # ===== FILTER =====
-    df = df_price[df_price["ticker"].isin(portfolio_tickers)].copy()
+    if not tickers:
+        return None
+
+    # ===== QUERY PRICE HISTORY =====
+    with engine.connect() as conn:
+        df = pd.read_sql(text("""
+            SELECT 
+                price_date AS date,
+                ticker,
+                price
+            FROM price_history
+            WHERE ticker = ANY(:tickers)
+            ORDER BY price_date
+        """), conn, params={"tickers": tickers})
 
     if df.empty:
         return None
 
     df = df.sort_values("date")
 
-    # ===== CALC PERFORMANCE =====
+    # ===== PERFORMANCE =====
     df["perf"] = df.groupby("ticker")["price"].transform(
         lambda x: x / x.iloc[0] - 1
     )
@@ -54,7 +67,7 @@ def render_relative_performance(df_price, portfolio_tickers):
             )
         )
 
-    # ===== BASELINE (QUAN TRỌNG) =====
+    # ===== BASELINE =====
     fig.add_hline(
         y=0,
         line_dash="dash",
