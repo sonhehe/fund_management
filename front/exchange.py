@@ -81,7 +81,7 @@ def render_investor(engine):
         # ===== TRADE REQUESTS =====
         trade_df = pd.read_sql(text("""
             SELECT 
-                customer_name,
+                trade_date,
                 side,
                 amount,
                 quantity,
@@ -97,7 +97,6 @@ def render_investor(engine):
         # ===== CASH REQUESTS =====
         cash_df = pd.read_sql(text("""
             SELECT 
-                customer_name,
                 type,
                 amount,
                 created_at
