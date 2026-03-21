@@ -169,5 +169,11 @@ def update_portfolio(engine):
             SET is_processed = TRUE
             WHERE is_processed = FALSE;
         """))
-
+        # 5️⃣ Cleanup: xóa các stock có quantity = 0 và market_price = 0
+        conn.execute(text("""
+            DELETE FROM portfolio
+            WHERE quantity = 0
+            AND asset_type = 'Stock'
+            AND market_price = 0
+        """))
     return "Portfolio updated safely."

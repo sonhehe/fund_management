@@ -107,10 +107,4 @@ def update_all_prices(engine):
 
             except Exception as e:
                 print(f"[WARN] {ticker}: {e}")
-        conn.execute(text("""
-            DELETE FROM portfolio
-            WHERE quantity = 0
-            AND asset_type = 'Stock'
-            AND market_price = 0
-        """))
     return count
