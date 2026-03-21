@@ -148,7 +148,7 @@ def load_investor_portfolio(customer_id: str):
 
         investor = conn.execute(
             text("""
-                SELECT customer_name, current_cash
+                SELECT customer_name, current_cash, available_cash
                 FROM investors
                 WHERE customer_id = :cid
             """),
@@ -197,6 +197,7 @@ def load_investor_portfolio(customer_id: str):
     # =============================
 
     nav_per_unit = float(nav_per_unit or 0)
+    available_cash = float(investor["available_cash"] or 0)
     current_cash = float(investor["current_cash"] or 0)
 
     # =============================
@@ -264,6 +265,7 @@ def load_investor_portfolio(customer_id: str):
         "unrealized_pnl": unrealized_pnl,
         "total_pnl": total_pnl,
         "roi": roi,
+        "available_cash": available_cash,
         "current_cash": current_cash,
         "total_assets": total_assets,
         "trades": trades,
