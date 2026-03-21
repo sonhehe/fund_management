@@ -5,6 +5,7 @@ from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
+from scripts.pricing_yahoo import get_stock_tickers
 from sqlalchemy import engine, text
 
 
@@ -31,9 +32,9 @@ def render():
         df_ove = df[df["snapshot_time"] == latest_time]
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
-    st.subheader("Portfolio Summary")
+    st.subheader("Overall")
     smart_dataframe(
-        df_ove,
+        df,
         "overall_snapshot",
         width="stretch",
         hide_index=True
@@ -63,7 +64,7 @@ def render():
         df_display["target_weight"] = (
             df_display["target_weight"].astype(float) * 100
         ).map(lambda x: f"{x:.2f}%")
-
+    st.subheader("Portfolio")
     smart_dataframe(
         df_display,
         "portfolio_view",
@@ -88,7 +89,7 @@ def render():
 
     st.subheader("Relative Performance vs Total (%)")
 
-    tickers = df_port["ticker"].dropna().unique().tolist()
+    tickers = get_stock_tickers(engine)
 
     fig = render_performance_chart(engine, tickers)
 

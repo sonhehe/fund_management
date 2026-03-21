@@ -5,6 +5,7 @@ from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
 from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
+from scripts.pricing_yahoo import get_stock_tickers
 from sqlalchemy import engine, text
 def render():
     df = load_table("overall_snapshot")
@@ -74,7 +75,7 @@ def render():
 
     st.subheader("Relative Performance vs Total (%)")
     
-    tickers = df_port["ticker"].dropna().unique().tolist()
+    tickers = get_stock_tickers(engine)
 
     fig = render_performance_chart(engine, tickers)
 
