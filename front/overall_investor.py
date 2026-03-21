@@ -1,14 +1,10 @@
 import streamlit as st
 import pandas as pd
-from yfinance import tickers
-
 from scripts.db import load_table, smart_dataframe
 from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
-from scripts.pricing_yahoo import get_stock_tickers
 from sqlalchemy import text
-from scripts.db_engine import engine, text
 
 
 def render():

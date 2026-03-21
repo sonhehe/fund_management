@@ -5,9 +5,7 @@ from scripts.ui.nav_chart import render_nav_chart
 from scripts.ui.nav_service import get_nav_df
 from scripts.ui.relative_performance import render_performance_chart
 from scripts.db_engine import get_engine
-from scripts.pricing_yahoo import get_stock_tickers
-from sqlalchemy import engine, text
-from scripts.db_engine import engine, text
+from sqlalchemy import text
 def render():
     df = load_table("overall_snapshot")
     df_nav = load_table("nav")
