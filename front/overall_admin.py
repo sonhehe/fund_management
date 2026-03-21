@@ -71,7 +71,6 @@ def render():
         config={"displayModeBar": False}
     )
 
-    render_asset_allocation(df_ove)
 
     st.subheader("Relative Performance vs Total (%)")
     
