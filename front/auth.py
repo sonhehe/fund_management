@@ -126,7 +126,7 @@ def render_auth():
             if res.user is None:
                 st.error("Invalid username or password")
                 st.stop()
-
+            st.session_state.customer_name = user["display_name"]
             st.session_state.logged_in = True
             st.session_state.role = user["role"]
             st.session_state.username = user["username"]
