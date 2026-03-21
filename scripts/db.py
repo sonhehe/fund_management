@@ -157,7 +157,7 @@ def load_table(table_name: str) -> pd.DataFrame:
 
 # ======================
 from decimal import Decimal
-def smart_dataframe(df, table_name, hide_index=True):
+def smart_dataframe(df, table_name, width=None, hide_index=True):
 
     df_display = apply_column_labels(df.copy(), table_name)
 
