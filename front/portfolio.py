@@ -35,7 +35,7 @@ def render():
     # UPDATE MARKET PRICES
     # ======================
 
-    if st.button("Update Market Prices (Yahoo)"):
+    if st.button("Update Market Prices"):
 
         with st.spinner("Fetching prices from Yahoo Finance..."):
             update_all_prices(engine)

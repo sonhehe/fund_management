@@ -1,6 +1,6 @@
 import yfinance as yf
 from sqlalchemy import text
-
+import datetime
 
 # ==============================
 # 1️⃣ LẤY GIÁ
@@ -10,19 +10,22 @@ def get_close_price(ticker: str) -> dict:
     ticker_clean = ticker.upper().replace(".VN", "")
     yf_ticker = ticker_clean + ".VN"
 
-    data = yf.Ticker(yf_ticker).history(period="5d")
+    data = yf.Ticker(yf_ticker).history(period="7d")
 
     if data.empty:
         raise ValueError(f"No data for {ticker}")
 
     last = data.iloc[-1]
 
+    market_date = last.name.date()
+    today = datetime.date.today()
+
     return {
         "ticker": ticker_clean,
         "close_price": float(last["Close"]),
-        "price_date": last.name.date(),
+        "price_date": market_date,     # ngày thị trường
+        "updated_at": today           # ngày hệ thống update
     }
-
 
 # ==============================
 # 2️⃣ LẤY DANH SÁCH STOCK
@@ -57,7 +60,6 @@ def update_all_prices(engine):
 
     count = 0
 
-    # 🔥 mở 1 transaction duy nhất
     with engine.begin() as conn:
 
         for ticker in tickers:
