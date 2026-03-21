@@ -70,8 +70,8 @@ def render():
 
 def render_investor(engine):
     # ======================
-# PENDING REQUESTS
-# ======================
+    # PENDING REQUESTS
+    # ======================
 
     st.divider()
     st.subheader("Pending Requests")
@@ -126,11 +126,12 @@ def render_investor(engine):
 
     st.subheader("Fund Unit Transaction")
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
 
     c1.metric("NAV per Unit", f"{nav_price:,.2f}")
-    c2.metric("Available Balance", f"{current_cash:,.0f}")
-    c3.metric("Units Held", f"{current_units:,.4f}")
+    c2.metric("Available Balance", f"{available_cash:,.0f}")
+    c4.metric("Units Held", f"{current_units:,.0f}")
+    c3.metric("Current cash", f"{current_cash:,.0f}")
 
     side = st.selectbox("Side", ["Buy", "Sell"])
 
