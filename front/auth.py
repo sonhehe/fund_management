@@ -109,7 +109,7 @@ def render_auth():
 
             with engine.connect() as conn:
                 user = conn.execute(text("""
-                    SELECT email, username, role, customer_id
+                    SELECT email, username, role, customer_id, display_name
                     FROM users
                     WHERE username = :u
                 """), {"u": username}).mappings().fetchone()
