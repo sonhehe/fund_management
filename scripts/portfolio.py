@@ -176,6 +176,14 @@ def update_portfolio(engine):
             AND asset_type = 'Stock'
             AND market_price = 0
         """))
+        # 6️⃣ Recalculate net_value
+        conn.execute(text("""
+            UPDATE portfolio
+            SET net_value = CASE
+                WHEN ticker = 'YTM' THEN COALESCE(market_price, 0)
+                ELSE COALESCE(quantity, 0) * COALESCE(market_price, 0)
+            END;
+        """))
         # 6️⃣ Recalculate current weight
         conn.execute(text("""
             WITH total_nav AS (
