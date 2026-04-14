@@ -180,9 +180,16 @@ def update_portfolio(engine):
         conn.execute(text("""
             UPDATE portfolio
             SET net_value = CASE
-                WHEN ticker = 'YTM' THEN COALESCE(market_price, 0)
+                WHEN ticker = 'YTM' THEN net_value
                 ELSE COALESCE(quantity, 0) * COALESCE(market_price, 0)
             END;
+        """))
+        
+        # 7️⃣ Sync YTM market_price = net_value
+        conn.execute(text("""
+            UPDATE portfolio
+            SET market_price = net_value
+            WHERE ticker = 'YTM';
         """))
         # 6️⃣ Recalculate current weight
         conn.execute(text("""
