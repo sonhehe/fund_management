@@ -176,4 +176,17 @@ def update_portfolio(engine):
             AND asset_type = 'Stock'
             AND market_price = 0
         """))
+        # 6️⃣ Recalculate current weight
+        conn.execute(text("""
+            WITH total_nav AS (
+                SELECT COALESCE(SUM(net_value), 0) AS total_value
+                FROM portfolio
+            )
+            UPDATE portfolio p
+            SET current_weight = CASE
+                WHEN t.total_value = 0 THEN 0
+                ELSE COALESCE(p.net_value, 0) / t.total_value
+            END
+            FROM total_nav t;
+        """))
     return "Portfolio updated safely."
