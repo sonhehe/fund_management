@@ -6,52 +6,52 @@ import datetime
 # 1️⃣ LẤY GIÁ
 # ==============================
 def get_close_price(ticker: str) -> dict:
-
     ticker_clean = ticker.upper().replace(".VN", "")
-    yf_ticker = ticker_clean + ".VN"
+    yf_ticker = f"{ticker_clean}.VN"
 
-    data = yf.Ticker(yf_ticker).history(period="7d")
+    data = yf.Ticker(yf_ticker).history(period="1mo", auto_adjust=False)
 
     if data.empty:
-        raise ValueError(f"No data for {ticker}")
+        raise ValueError(f"No data for {ticker_clean}")
 
-    last = data.iloc[-1]
+    data = data[["Close"]].dropna()
 
-    market_date = last.name.date()
-    today = datetime.date.today()
+    if data.empty:
+        raise ValueError(f"No valid close price for {ticker_clean}")
+
+    last_idx = data.index[-1]
+    last_close = float(data.iloc[-1]["Close"])
+
+    market_date = last_idx.date()
+    updated_at = datetime.date.today()
 
     return {
         "ticker": ticker_clean,
-        "close_price": float(last["Close"]),
-        "price_date": market_date,     # ngày thị trường
-        "updated_at": today           # ngày hệ thống update
+        "close_price": last_close,
+        "market_date": market_date,
+        "updated_at": updated_at
     }
 
 # ==============================
 # 2️⃣ LẤY DANH SÁCH STOCK
 # ==============================
 def get_stock_tickers(engine):
-
     with engine.connect() as conn:
         result = conn.execute(
             text("""
-                SELECT DISTINCT ticker
+                SELECT DISTINCT UPPER(ticker) AS ticker
                 FROM portfolio
                 WHERE asset_type = 'Stock'
-                AND ticker IS NOT NULL
+                  AND ticker IS NOT NULL
+                  AND TRIM(ticker) <> ''
             """)
         )
-
-        tickers = [row[0] for row in result]
-
-    return tickers
-
+        return [row[0] for row in result]
 
 # ==============================
 # 3️⃣ UPDATE ALL
 # ==============================
 def update_all_prices(engine):
-
     tickers = get_stock_tickers(engine)
 
     if not tickers:
@@ -61,25 +61,26 @@ def update_all_prices(engine):
     count = 0
 
     with engine.begin() as conn:
-
         for ticker in tickers:
             try:
                 price = get_close_price(ticker)
 
-                # UPSERT price_history
+                # Lưu lịch sử giá theo ngày thị trường
                 conn.execute(
                     text("""
                         INSERT INTO price_history (
                             ticker,
                             close_price,
                             price_date,
-                            source
+                            source,
+                            created_at
                         )
                         VALUES (
                             :ticker,
                             :close_price,
-                            :price_date,
-                            'yfinance'
+                            :market_date,
+                            'yfinance',
+                            now()
                         )
                         ON CONFLICT (ticker, price_date)
                         DO UPDATE SET
@@ -90,15 +91,15 @@ def update_all_prices(engine):
                     price
                 )
 
-                # UPDATE portfolio
+                # Update portfolio theo ngày hệ thống
                 conn.execute(
                     text("""
                         UPDATE portfolio
                         SET
                             market_price = :close_price,
-                            price_date   = :price_date
-                        WHERE ticker = :ticker
-                        DELETE 
+                            price_date   = :updated_at
+                        WHERE UPPER(ticker) = :ticker
+                          AND asset_type = 'Stock';
                     """),
                     price
                 )
@@ -107,4 +108,5 @@ def update_all_prices(engine):
 
             except Exception as e:
                 print(f"[WARN] {ticker}: {e}")
+
     return count
