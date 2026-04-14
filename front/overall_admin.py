@@ -30,7 +30,11 @@ def render():
             st.success("Overall snapshot updated successfully")
             st.rerun()
     st.subheader("Costs")
-
+    df_costs["cost_date"] = pd.to_datetime(df_costs["cost_date"])
+    
+    latest_date = df_costs["cost_date"].max()
+    
+    df_costs = df_costs[df_costs["cost_date"] == latest_date]
     smart_dataframe(
         df_costs,
         "costs",
