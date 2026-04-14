@@ -9,22 +9,21 @@ def render():
     df = load_table("overall_snapshot")
     df_nav = load_table("nav")
     df_costs = load_table("costs")
-    if not df.empty and "snapshot_time" in df.columns:
-        df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
-        latest_time = df["snapshot_time"].max()
-        df_ove = df[df["snapshot_time"] == latest_time]
+    
     df_nav["nav_date"] = pd.to_datetime(df_nav["nav_date"])
     df_nav = df_nav.sort_values("nav_date")
     # ---------- TABLE ----------
     st.subheader("Overall")
-
-    smart_dataframe(
-        df_ove,
-        "overall_snapshot",
-        width="stretch",
-        hide_index=True
-    )
-
+    if not df.empty and "snapshot_time" in df.columns:
+        df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
+        latest_time = df["snapshot_time"].max()
+        df_ove = df[df["snapshot_time"] == latest_time]
+        smart_dataframe(
+            df_ove,
+            "overall_snapshot",
+            width="stretch",
+            hide_index=True
+        )
     if st.button("Update Overall Snapshot"):
             update_overall_snapshot()
             st.success("Overall snapshot updated successfully")
