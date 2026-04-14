@@ -209,9 +209,7 @@ def update_overall_snapshot():
     sql = """
 
     -- DELETE snapshot today only
-    DELETE FROM overall_snapshot
-    WHERE DATE(snapshot_time) = CURRENT_DATE;
-
+    DELETE FROM overall_snapshot;
 
     -- TOTAL
     INSERT INTO overall_snapshot (
